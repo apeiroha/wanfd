@@ -132,3 +132,36 @@ func checkParserErrors(t *testing.T, p *Parser) {
 	}
 	t.FailNow()
 }
+
+func TestParserResilience(t *testing.T) {
+	// Test that the parser can handle incomplete input without generating fatal errors,
+	// which is important for editor integration (e.g., VS Code extension).
+	input := `key =`
+	l := NewLexer([]byte(input))
+	p := NewParser(l)
+	p.SetLintMode(true)
+	p.ParseProgram()
+
+	// A fatal error would be in p.Errors(). We expect this to be empty.
+	if len(p.Errors()) > 0 {
+		t.Fatalf("Expected no fatal parser errors for incomplete input, but got: %v", p.Errors())
+	}
+
+	// We expect a non-fatal LintError instead.
+	lintErrors := p.LintErrors()
+	if len(lintErrors) == 0 {
+		t.Fatalf("Expected lint errors for incomplete input, but got none.")
+	}
+
+	// Check that we got an "unexpected token" error for the EOF.
+	found := false
+	for _, err := range lintErrors {
+		if err.Type == ErrUnexpectedToken {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("Expected an 'ErrUnexpectedToken' lint error, but did not find one. Got: %v", lintErrors)
+	}
+}

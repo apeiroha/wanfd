@@ -152,28 +152,26 @@ func (p *Parser) parseStatement() Statement {
 	}
 
 	if stmt == nil {
-		if p.LintMode {
-			message := fmt.Sprintf("unexpected token %s (%s)", p.curToken.Type, string(p.curToken.Literal))
-			if p.curToken.Type == ILLEGAL {
-				message = string(p.curToken.Literal)
-			}
-			var args []string
-			if p.curToken.Type != ILLEGAL {
-				args = []string{string(p.curToken.Type), string(p.curToken.Literal)}
-			}
-			p.lintErrors = append(p.lintErrors, LintError{
-				Line:      p.curToken.Line,
-				Column:    p.curToken.Column,
-				EndLine:   p.curToken.Line,
-				EndColumn: p.curToken.Column + len(p.curToken.Literal),
-				Message:   message,
-				Level:     ErrorLevelLint,
-				Type:      ErrUnexpectedToken,
-				Args:      args,
-			})
-		} else {
-			p.errors = append(p.errors, fmt.Sprintf("unexpected token %s (%s) on line %d", p.curToken.Type, string(p.curToken.Literal), p.curToken.Line))
+		// 在 lint 模式下, 将无法解析的 token 视为一个 lint 错误, 而不是致命的解析错误。
+		// 这使得 linter 在面对不完整的代码时更具弹性。
+		message := fmt.Sprintf("unexpected token %s (%s)", p.curToken.Type, string(p.curToken.Literal))
+		if p.curToken.Type == ILLEGAL {
+			message = string(p.curToken.Literal)
 		}
+		var args []string
+		if p.curToken.Type != ILLEGAL {
+			args = []string{string(p.curToken.Type), string(p.curToken.Literal)}
+		}
+		p.lintErrors = append(p.lintErrors, LintError{
+			Line:      p.curToken.Line,
+			Column:    p.curToken.Column,
+			EndLine:   p.curToken.Line,
+			EndColumn: p.curToken.Column + len(p.curToken.Literal),
+			Message:   message,
+			Level:     ErrorLevelLint,
+			Type:      ErrUnexpectedToken,
+			Args:      args,
+		})
 		p.nextToken()
 		return nil
 	}
@@ -201,9 +199,13 @@ func (p *Parser) parseStatement() Statement {
 func (p *Parser) parseAssignStatement(leading []*Comment) *AssignStatement {
 	stmt := &AssignStatement{Token: p.curToken, LeadingComments: leading}
 	stmt.Name = &Identifier{Token: p.curToken, Value: string(p.curToken.Literal)}
-	p.nextToken()
-	p.nextToken()
+	p.nextToken() // advance past name
+	p.nextToken() // advance past '='
 	stmt.Value = p.parseExpression(LOWEST)
+	if stmt.Value == nil {
+		stmt.EndToken = stmt.Name.End() // or the '=' token if we stored it
+		return stmt
+	}
 	stmt.EndToken = stmt.Value.End()
 	return stmt
 }
@@ -260,6 +262,10 @@ func (p *Parser) parseVarStatement(leading []*Comment) *VarStatement {
 	}
 	p.nextToken()
 	stmt.Value = p.parseExpression(LOWEST)
+	if stmt.Value == nil {
+		stmt.EndToken = stmt.Name.End()
+		return stmt
+	}
 	stmt.EndToken = stmt.Value.End()
 	return stmt
 }
@@ -482,10 +488,30 @@ func (p *Parser) expectPeek(t TokenType) bool {
 	return false
 }
 func (p *Parser) peekError(t TokenType) {
-	p.errors = append(p.errors, fmt.Sprintf("expected next token to be %s, got %s instead", t, p.peekToken.Type))
+	msg := fmt.Sprintf("expected next token to be %s, got %s instead", t, p.peekToken.Type)
+	if p.LintMode {
+		p.lintErrors = append(p.lintErrors, LintError{
+			Line:    p.peekToken.Line,
+			Column:  p.peekToken.Column,
+			Message: msg,
+			Type:    ErrUnexpectedToken,
+		})
+	} else {
+		p.errors = append(p.errors, msg)
+	}
 }
 func (p *Parser) noPrefixParseFnError(t TokenType) {
-	p.errors = append(p.errors, fmt.Sprintf("no prefix parse function for %s found", t))
+	msg := fmt.Sprintf("no prefix parse function for %s found", t)
+	if p.LintMode {
+		p.lintErrors = append(p.lintErrors, LintError{
+			Line:    p.curToken.Line,
+			Column:  p.curToken.Column,
+			Message: msg,
+			Type:    ErrUnexpectedToken,
+		})
+	} else {
+		p.errors = append(p.errors, msg)
+	}
 }
 func (p *Parser) registerPrefix(tokenType TokenType, fn prefixParseFn) {
 	p.prefixParseFns[tokenType] = fn

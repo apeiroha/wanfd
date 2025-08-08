@@ -17,20 +17,28 @@ var varRegex = regexp.MustCompile(`\$\{(\w+)\}`)
 func Lint(data []byte) (*RootNode, []LintError) {
 	l := NewLexer(data)
 	p := NewParser(l)
+	// LintMode is always true for this function.
+	// This ensures that errors are collected in LintErrors instead of causing a hard stop.
 	p.SetLintMode(true)
 	program := p.ParseProgram()
+
+	// Combine parser errors and lint errors for a comprehensive list.
+	allErrors := p.LintErrors()
 	if len(p.Errors()) > 0 {
-		return program, []LintError{
-			{
-				Line:      1,
+		// Convert fatal parser errors into LintError format
+		for _, errStr := range p.Errors() {
+			allErrors = append(allErrors, LintError{
+				Line:      1, // Parser errors don't have good position info, default to top
 				Column:    1,
 				EndLine:   1,
 				EndColumn: 1,
-				Message:   "parser error: " + strings.Join(p.Errors(), "; "),
-			},
+				Message:   "parser error: " + errStr,
+				Level:     ErrorLevelLint,
+				Type:      ErrUnknown,
+			})
 		}
 	}
-	allErrors := p.LintErrors()
+
 	analyzer := &astAnalyzer{
 		errors:       allErrors,
 		blockCounts:  make(map[string]int),
