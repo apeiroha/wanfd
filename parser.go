@@ -468,8 +468,18 @@ func (p *Parser) expectPeek(t TokenType) bool {
 	return false
 }
 func (p *Parser) peekError(t TokenType) {
+	// expected next token to be %s, got %s instead
 	msg := fmt.Sprintf("expected next token to be %s, got %s instead", t, p.peekToken.Type)
-	p.appendErrorAt(p.peekToken, msg)
+	p.errors = append(p.errors, LintError{
+		Line:      p.peekToken.Line,
+		Column:    p.peekToken.Column,
+		EndLine:   p.peekToken.Line,
+		EndColumn: p.peekToken.Column + len(p.peekToken.Literal),
+		Message:   msg,
+		Level:     ErrorLevelLint,
+		Type:      ErrExpectDiffToken,
+		Args:      []string{string(t), string(p.peekToken.Type)},
+	})
 }
 func (p *Parser) noPrefixParseFnError(t TokenType) {
 	p.appendError(fmt.Sprintf("no prefix parse function for %s found", t))
@@ -485,7 +495,7 @@ func (p *Parser) appendErrorAt(tok Token, msg string) {
 		Column:    tok.Column,
 		EndLine:   tok.Line,
 		EndColumn: tok.Column + len(tok.Literal),
-		Message:   "parser error: " + msg,
+		Message:   msg,
 		Level:     ErrorLevelLint,
 		Type:      ErrUnexpectedToken,
 	})

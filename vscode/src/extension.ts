@@ -195,12 +195,14 @@ function handleExecutionError(error: any, commandName: 'lint' | 'fmt'): void {
 // 	ErrRedundantComma (2)
 // 	ErrRedundantLabel (3)
 // 	ErrUnusedVariable (4)
+// 	ErrExpectDiffToken (5)
 // )
 const translationMap: { [key: number]: string } = {
 	1: "意外的标记: %s (%s)",
 	2: "冗余的逗号; 块中的语句应由换行符分隔。",
 	3: "块“%s”只定义了一次, 标签“%s”是多余的。",
 	4: "变量“%s”已声明但从未使用。",
+	5: "期望下一个标记是 %s, 但得到的是 %s",
 };
 
 /**

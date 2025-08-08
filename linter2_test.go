@@ -161,7 +161,7 @@ list = [
 	"a"
 	"b"
 ]`,
-			wantErrors: []string{"line 4:2: parser error: expected next token to be ], got STRING instead"},
+			wantErrors: []string{"line 4:2: expected next token to be ], got STRING instead"},
 		},
 	}
 
