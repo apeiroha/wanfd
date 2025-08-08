@@ -12,30 +12,26 @@ database {
 name = "My App"
 info = [
 	"Info 1",
-	"Info 2"
+	"Info 2",
 ]
 
-dashMap {
-	key1 = "value1"
-	key2 = "value2"
-}
+dashMap = {[
+	key1 = "value1",
+	key2 = "value2",
+]}
 
-sList {
-	item1 = {
+sList = {[
+	item1 = {},
+	item2 = {},
+]}
 
-	}
-	item2 = {
-
-	}
-}
-
-dList {
+dList = {[
 	detail1 = {
 		id = 1
 		name = "Detail One"
-	}
+	},
 	detail2 = {
 		id = 2
 		name = "Detail Two"
-	}
-}
+	},
+]}
