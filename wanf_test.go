@@ -9,21 +9,26 @@ import (
 
 func TestEncoder_Styles(t *testing.T) {
 	type SubBlock struct {
-		B_sub_kv string `wanf:"b_sub_kv"`
-		A_sub_kv string `wanf:"a_sub_kv"`
+		B_sub_kv string            `wanf:"b_sub_kv"`
+		A_sub_kv string            `wanf:"a_sub_kv"`
+		C_sub_map map[string]string `wanf:"c_sub_map"`
 	}
 	type Config struct {
-		C_kv    string            `wanf:"c_kv"`
-		A_block SubBlock          `wanf:"a_block"`
-		B_kv    int               `wanf:"b_kv"`
-		D_map   map[string]string `wanf:"d_map"`
+		C_kv    string   `wanf:"c_kv"`
+		A_block SubBlock `wanf:"a_block"`
+		B_kv    int      `wanf:"b_kv"`
 	}
 
 	testData := Config{
-		C_kv:    "c",
-		A_block: SubBlock{B_sub_kv: "b", A_sub_kv: "a"},
-		B_kv:    123,
-		D_map:   map[string]string{"z_key": "z", "y_key": "y"},
+		C_kv: "c",
+		A_block: SubBlock{
+			B_sub_kv: "b",
+			A_sub_kv: "a",
+			C_sub_map: map[string]string{
+				"sub_key": "sub_val",
+			},
+		},
+		B_kv: 123,
 	}
 
 	tests := []struct {
@@ -39,14 +44,12 @@ func TestEncoder_Styles(t *testing.T) {
 a_block {
 	a_sub_kv = "a"
 	b_sub_kv = "b"
+	c_sub_map = {[
+		sub_key = "sub_val",
+	]}
 }
 
-b_kv = 123
-
-d_map = {[
-	y_key = "y",
-	z_key = "z",
-]}`,
+b_kv = 123`,
 		},
 		{
 			"StyleAllSorted",
@@ -54,14 +57,12 @@ d_map = {[
 			`b_kv = 123
 c_kv = "c"
 
-d_map = {[
-	y_key = "y",
-	z_key = "z",
-]}
-
 a_block {
 	a_sub_kv = "a"
 	b_sub_kv = "b"
+	c_sub_map = {[
+		sub_key = "sub_val",
+	]}
 }`,
 		},
 		{
@@ -71,17 +72,16 @@ a_block {
 a_block {
 	b_sub_kv = "b"
 	a_sub_kv = "a"
+	c_sub_map = {[
+		sub_key = "sub_val",
+	]}
 }
-b_kv = 123
-d_map = {[
-	y_key = "y",
-	z_key = "z",
-]}`,
+b_kv = 123`,
 		},
 		{
 			"StyleSingleLine",
 			[]EncoderOption{WithStyle(StyleSingleLine)},
-			`c_kv="c";a_block{b_sub_kv="b";a_sub_kv="a"};b_kv=123;d_map={[y_key="y",z_key="z"]}`,
+			`c_kv="c";a_block{b_sub_kv="b";a_sub_kv="a";c_sub_map={[sub_key="sub_val"]}};b_kv=123`,
 		},
 	}
 

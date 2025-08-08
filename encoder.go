@@ -145,7 +145,7 @@ func (e *internalEncoder) encodeStruct(v reflect.Value, depth int) error {
 
 	var prevWasBlockLike bool
 	for i, f := range fields {
-		e.writeSeparator(i > 0, f.isBlockLike, prevWasBlockLike)
+		e.writeSeparator(i > 0, f.isBlockLike, prevWasBlockLike, depth)
 		e.encodeField(f, depth)
 		prevWasBlockLike = f.isBlockLike
 	}
@@ -311,7 +311,7 @@ func (e *internalEncoder) writeSpace() {
 		e.buf.WriteString(" ")
 	}
 }
-func (e *internalEncoder) writeSeparator(isNotFirst, isCurrentBlockLike, isPrevBlockLike bool) {
+func (e *internalEncoder) writeSeparator(isNotFirst, isCurrentBlockLike, isPrevBlockLike bool, depth int) {
 	if !isNotFirst {
 		return
 	}
@@ -320,9 +320,9 @@ func (e *internalEncoder) writeSeparator(isNotFirst, isCurrentBlockLike, isPrevB
 		return
 	}
 	e.writeNewLine()
-	// 在StyleBlockSorted或StyleAllSorted模式下, 且启用了空行时, 在块之间添加空行
-	// In StyleBlockSorted or StyleAllSorted mode, when empty lines are enabled, add an empty line between blocks.
-	if (e.opts.Style == StyleBlockSorted || e.opts.Style == StyleAllSorted) && e.opts.EmptyLines && (isCurrentBlockLike || isPrevBlockLike) {
+	// 在StyleBlockSorted或StyleAllSorted模式下, 且启用了空行时, 在顶级块之间添加空行
+	// In StyleBlockSorted or StyleAllSorted mode, when empty lines are enabled, add an empty line between top-level blocks.
+	if depth == 0 && (e.opts.Style == StyleBlockSorted || e.opts.Style == StyleAllSorted) && e.opts.EmptyLines && (isCurrentBlockLike || isPrevBlockLike) {
 		e.writeNewLine()
 	}
 }
