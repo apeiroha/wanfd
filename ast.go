@@ -447,6 +447,11 @@ func (bl *BlockLiteral) Format(w *bytes.Buffer, indent string, opts FormatOption
 		w.WriteString("{")
 		bl.Body.Format(w, "", opts)
 		w.WriteString("}")
+		return
+	}
+
+	if len(bl.Body.Statements) == 0 {
+		w.WriteString("{}")
 	} else {
 		w.WriteString("{\n")
 		bl.Body.Format(w, indent+"\t", opts)

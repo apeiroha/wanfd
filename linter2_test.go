@@ -140,6 +140,20 @@ b_block {
 	]}
 }`,
 		},
+		{
+			name: "fmt empty block literal",
+			input: `
+list = [
+    {},
+    {
+    },
+]
+`,
+			wantOutput: `list = [
+	{},
+	{},
+]`,
+		},
 	}
 
 	for _, tc := range testCases {
