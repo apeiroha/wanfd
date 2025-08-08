@@ -1,0 +1,13 @@
+// Test for trailing comma lint rule in slices
+my_slice = [
+    "a",
+    "b",
+]
+
+// Test for mandatory trailing comma in maps (parser should fail)
+// I will create a separate file for this because the parser will error out.
+
+// Test for old map format lint rule
+my_map_block {
+    key = "value"
+}

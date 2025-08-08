@@ -80,6 +80,11 @@ func (a *astAnalyzer) Analyze(node Node) Node {
 	return newNode
 }
 
+const (
+	ErrMapLikeBlock ErrorType = iota
+	ErrRedundantTrailingComma
+)
+
 func (a *astAnalyzer) collect(root Node) {
 	if root == nil {
 		return
@@ -138,6 +143,30 @@ func (a *astAnalyzer) check(node Node) Node {
 		if n.Body != nil {
 			n.Body = a.check(n.Body).(*RootNode)
 		}
+		isOnlyAssignments := true
+		if n.Body != nil && len(n.Body.Statements) > 0 {
+			for _, stmt := range n.Body.Statements {
+				if _, ok := stmt.(*AssignStatement); !ok {
+					isOnlyAssignments = false
+					break
+				}
+			}
+		} else {
+			isOnlyAssignments = false
+		}
+		if isOnlyAssignments && n.Label == nil {
+			err := LintError{
+				Line:      n.Token.Line,
+				Column:    n.Token.Column,
+				EndLine:   n.Token.Line,
+				EndColumn: n.Token.Column + len(n.Name.Value),
+				Message:   fmt.Sprintf("block %q contains only key-value pairs; if it represents a map, consider using the '{[...]}' syntax for clarity", n.Name.Value),
+				Level:     ErrorLevelLint,
+				Type:      ErrMapLikeBlock,
+				Args:      []string{n.Name.Value},
+			}
+			a.errors = append(a.errors, err)
+		}
 		if n.Label != nil && a.blockCounts[n.Name.Value] == 1 {
 			err := LintError{
 				Line:      n.Token.Line,
@@ -164,12 +193,29 @@ func (a *astAnalyzer) check(node Node) Node {
 			n.Body = a.check(n.Body).(*RootNode)
 		}
 		return n
+	case *MapLiteral:
+		if n.Elements != nil {
+			for i, el := range n.Elements {
+				n.Elements[i] = a.check(el).(*AssignStatement)
+			}
+		}
+		return n
 	case *AssignStatement:
 		if n.Value != nil {
 			n.Value = a.check(n.Value).(Expression)
 		}
 		return n
 	case *ListLiteral:
+		if n.HasTrailingComma {
+			err := LintError{
+				Line:      n.Token.Line,
+				Column:    n.Token.Column,
+				Message:   "redundant trailing comma in list literal",
+				Level:     ErrorLevelLint,
+				Type:      ErrRedundantTrailingComma,
+			}
+			a.errors = append(a.errors, err)
+		}
 		for i, el := range n.Elements {
 			n.Elements[i] = a.check(el).(Expression)
 		}
@@ -404,10 +450,47 @@ func (d *internalDecoder) setField(field reflect.Value, val interface{}) error {
 		field.Set(v.Convert(field.Type()))
 		return nil
 	}
+	if field.Kind() == reflect.Map && v.Kind() == reflect.Map {
+		return d.setMapField(field, v)
+	}
 	if field.Kind() == reflect.Slice && v.Kind() == reflect.Slice {
 		return d.setSliceField(field, v)
 	}
 	return fmt.Errorf("cannot set field of type %s with value of type %T", field.Type(), val)
+}
+
+func (d *internalDecoder) setMapField(field, v reflect.Value) error {
+	mapType := field.Type()
+	elemType := mapType.Elem()
+	keyType := mapType.Key()
+
+	if field.IsNil() {
+		field.Set(reflect.MakeMap(mapType))
+	}
+
+	iter := v.MapRange()
+	for iter.Next() {
+		k := iter.Key()
+		val := iter.Value()
+
+		// The value from evalExpression is an interface{}, so we need to get the underlying value.
+		if val.Kind() == reflect.Interface {
+			val = val.Elem()
+		}
+
+		if !k.Type().ConvertibleTo(keyType) {
+			return fmt.Errorf("cannot use key of type %s for map with key type %s", k.Type(), keyType)
+		}
+		convertedKey := k.Convert(keyType)
+
+		if !val.Type().ConvertibleTo(elemType) {
+			return fmt.Errorf("cannot use value of type %s for map with value type %s", val.Type(), elemType)
+		}
+		convertedValue := val.Convert(elemType)
+
+		field.SetMapIndex(convertedKey, convertedValue)
+	}
+	return nil
 }
 
 func (d *internalDecoder) setSliceField(field, v reflect.Value) error {
@@ -466,6 +549,8 @@ func (d *internalDecoder) evalExpression(expr Expression) (interface{}, error) {
 		return list, nil
 	case *BlockLiteral:
 		return d.decodeBlockToMap(e.Body)
+	case *MapLiteral:
+		return d.decodeMapLiteralToMap(e)
 	}
 	return nil, fmt.Errorf("unknown expression type: %T", expr)
 }
@@ -487,6 +572,18 @@ func (d *internalDecoder) decodeBlockToMap(body *RootNode) (map[string]interface
 			}
 			m[s.Name.Value] = nestedMap
 		}
+	}
+	return m, nil
+}
+
+func (d *internalDecoder) decodeMapLiteralToMap(ml *MapLiteral) (map[string]interface{}, error) {
+	m := make(map[string]interface{})
+	for _, stmt := range ml.Elements {
+		val, err := d.evalExpression(stmt.Value)
+		if err != nil {
+			return nil, err
+		}
+		m[stmt.Name.Value] = val
 	}
 	return m, nil
 }

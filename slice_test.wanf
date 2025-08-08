@@ -1,0 +1,5 @@
+// Test for trailing comma lint rule in slices
+my_slice = [
+    "a",
+    "b",
+]

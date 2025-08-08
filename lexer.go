@@ -43,13 +43,23 @@ func (l *Lexer) NextToken() Token {
 	case ';':
 		tok = l.newToken(SEMICOLON, l.ch, line, col)
 	case '{':
-		tok = l.newToken(LBRACE, l.ch, line, col)
+		if l.peekChar() == '[' {
+			l.readChar()
+			tok = Token{Type: DASH_LBRACE, Literal: []byte("{["), Line: line, Column: col}
+		} else {
+			tok = l.newToken(LBRACE, l.ch, line, col)
+		}
 	case '}':
 		tok = l.newToken(RBRACE, l.ch, line, col)
 	case '[':
 		tok = l.newToken(LBRACK, l.ch, line, col)
 	case ']':
-		tok = l.newToken(RBRACK, l.ch, line, col)
+		if l.peekChar() == '}' {
+			l.readChar()
+			tok = Token{Type: DASH_RBRACE, Literal: []byte("]}"), Line: line, Column: col}
+		} else {
+			tok = l.newToken(RBRACK, l.ch, line, col)
+		}
 	case '(':
 		tok = l.newToken(LPAREN, l.ch, line, col)
 	case ')':

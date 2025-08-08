@@ -38,7 +38,7 @@ server {
 	port = 8080
 	host = "0.0.0.0"
 }`,
-			wantErrors: []string{"redundant comma"},
+			wantErrors: []string{"redundant comma", "contains only key-value pairs"},
 		},
 		{
 			name: "well-formatted file",
@@ -78,6 +78,20 @@ server "a" {
 			input:      `a = 1 /* comment`,
 			wantOutput: `a = 1`,
 			wantErrors: []string{"unclosed block comment"},
+		},
+		{
+			name: "redundant trailing comma in list",
+			input: `
+list = [
+	"a",
+	"b",
+]`,
+			wantOutput: `
+list = [
+	"a",
+	"b"
+]`,
+			wantErrors: []string{"redundant trailing comma in list literal"},
 		},
 	}
 

@@ -34,17 +34,34 @@ func TestEncoder_Styles(t *testing.T) {
 		{
 			"Default (StyleDefault)",
 			[]EncoderOption{},
-			"c_kv = \"c\"\n\na_block {\n\ta_sub_kv = \"a\"\n\tb_sub_kv = \"b\"\n}\n\nb_kv = 123\n\nd_map {\n\ty_key = \"y\"\n\tz_key = \"z\"\n}\n",
+			strings.Join(
+				[]string{
+					`c_kv = "c"`,
+					``,
+					`a_block {`,
+					`	a_sub_kv = "a"`,
+					`	b_sub_kv = "b"`,
+					`}`,
+					``,
+					`b_kv = 123`,
+					`d_map = {[`,
+					`	y_key = "y",`,
+					`	z_key = "z",`,
+					`]}`,
+					``,
+				},
+				"\n",
+			),
 		},
 		{
 			"StyleStreaming",
 			[]EncoderOption{WithStyle(StyleStreaming)},
-			"c_kv = \"c\"\na_block {\n\tb_sub_kv = \"b\"\n\ta_sub_kv = \"a\"\n}\nb_kv = 123\nd_map {\n\ty_key = \"y\"\n\tz_key = \"z\"\n}\n",
+			"c_kv = \"c\"\na_block {\n\tb_sub_kv = \"b\"\n\ta_sub_kv = \"a\"\n}\nb_kv = 123\nd_map = {[\n\ty_key = \"y\",\n\tz_key = \"z\",\n]}\n",
 		},
 		{
 			"StyleSingleLine",
 			[]EncoderOption{WithStyle(StyleSingleLine)},
-			"c_kv=\"c\";a_block{b_sub_kv=\"b\";a_sub_kv=\"a\"};b_kv=123;d_map{y_key=\"y\";z_key=\"z\"}",
+			"c_kv=\"c\";a_block{b_sub_kv=\"b\";a_sub_kv=\"a\"};b_kv=123;d_map={[y_key=\"y\",z_key=\"z\",]}",
 		},
 	}
 

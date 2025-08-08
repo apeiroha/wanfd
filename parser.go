@@ -83,6 +83,7 @@ func NewParser(l *Lexer) *Parser {
 	p.registerPrefix(DUR, p.parseDurationLiteral)
 	p.registerPrefix(LBRACK, p.parseListLiteral)
 	p.registerPrefix(LBRACE, p.parseBlockLiteral)
+	p.registerPrefix(DASH_LBRACE, p.parseMapLiteral)
 	p.registerPrefix(DOLLAR_LBRACE, p.parseVarExpression)
 	p.nextToken()
 	p.nextToken()
@@ -330,7 +331,7 @@ func (p *Parser) parseDurationLiteral() Expression {
 func (p *Parser) parseListLiteral() Expression {
 	list := &ListLiteral{Token: p.curToken}
 	p.nextToken()
-	list.Elements = p.parseExpressionList(RBRACK)
+	list.Elements, list.HasTrailingComma = p.parseExpressionList(RBRACK)
 	return list
 }
 
@@ -338,6 +339,42 @@ func (p *Parser) parseBlockLiteral() Expression {
 	block := &BlockLiteral{Token: p.curToken}
 	block.Body = p.parseBlockBody()
 	return block
+}
+
+func (p *Parser) parseMapLiteral() Expression {
+	lit := &MapLiteral{Token: p.curToken}
+	lit.Elements = []*AssignStatement{}
+
+	// Handle empty map: {[]}
+	if p.peekTokenIs(DASH_RBRACE) {
+		p.nextToken() // Consume DASH_LBRACE
+		p.nextToken() // Consume DASH_RBRACE
+		return lit
+	}
+
+	p.nextToken() // Consume DASH_LBRACE, move to the first identifier
+
+	for !p.curTokenIs(DASH_RBRACE) && !p.curTokenIs(EOF) {
+		stmt := p.parseAssignStatement(nil)
+		if stmt == nil {
+			return nil // Error already logged
+		}
+		lit.Elements = append(lit.Elements, stmt)
+		p.nextToken() // Move past the parsed value
+
+		if p.curTokenIs(DASH_RBRACE) {
+			p.errors = append(p.errors, "missing trailing comma before ']}'")
+			return nil
+		}
+
+		if !p.curTokenIs(COMMA) {
+			p.errors = append(p.errors, fmt.Sprintf("expected comma after map element, got %s", p.curToken.Type))
+			return nil
+		}
+		p.nextToken() // Consume comma
+	}
+
+	return lit
 }
 
 func (p *Parser) parseVarExpression() Expression {
@@ -378,16 +415,18 @@ func (p *Parser) parseEnvExpression() Expression {
 	return expr
 }
 
-func (p *Parser) parseExpressionList(end TokenType) []Expression {
+func (p *Parser) parseExpressionList(end TokenType) ([]Expression, bool) {
 	var list []Expression
+	hasTrailingComma := false
 	if p.curTokenIs(end) {
-		return list
+		return list, hasTrailingComma
 	}
 	list = append(list, p.parseExpression(LOWEST))
 	for p.peekTokenIs(COMMA) {
 		p.nextToken()
 		p.nextToken()
 		if p.curTokenIs(end) {
+			hasTrailingComma = true
 			break
 		}
 		list = append(list, p.parseExpression(LOWEST))
@@ -395,7 +434,7 @@ func (p *Parser) parseExpressionList(end TokenType) []Expression {
 	if !p.curTokenIs(end) {
 		p.expectPeek(end)
 	}
-	return list
+	return list, hasTrailingComma
 }
 
 func (p *Parser) curTokenIs(t TokenType) bool {

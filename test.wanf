@@ -1,0 +1,9 @@
+my_map {
+	key1 = "value1"
+	key2 = "value2"
+}
+
+my_new_map = {[
+		keyA = "valueA",
+		keyB = "valueB"
+]}

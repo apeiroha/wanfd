@@ -141,18 +141,20 @@ func (e *internalEncoder) encodeField(f fieldInfo, depth int) {
 	e.writeSpace()
 
 	if f.isBlock {
-		e.buf.WriteString("{")
-		e.writeNewLine()
-		e.indent++
 		if f.value.Kind() == reflect.Map {
+			e.buf.WriteString("{[")
 			e.encodeMap(f.value, depth+1)
+			e.buf.WriteString("]}")
 		} else {
+			e.buf.WriteString("{")
+			e.writeNewLine()
+			e.indent++
 			e.encodeStruct(f.value, depth+1)
+			e.indent--
+			e.writeNewLine()
+			e.writeIndent()
+			e.buf.WriteString("}")
 		}
-		e.indent--
-		e.writeNewLine()
-		e.writeIndent()
-		e.buf.WriteString("}")
 	} else {
 		e.buf.WriteString("=")
 		e.writeSpace()
@@ -197,7 +199,9 @@ func (e *internalEncoder) encodeValue(v reflect.Value, depth int) {
 		e.writeIndent()
 		e.buf.WriteString("}")
 	case reflect.Map:
+		e.buf.WriteString("{[")
 		e.encodeMap(v, depth)
+		e.buf.WriteString("]}")
 	}
 }
 
@@ -229,21 +233,24 @@ func (e *internalEncoder) encodeMap(v reflect.Value, depth int) {
 		keys = append(keys, key.String())
 	}
 	sort.Strings(keys)
-	for i, key := range keys {
-		if i > 0 {
-			if e.opts.Style == StyleSingleLine {
-				e.buf.WriteString(";")
-			} else {
-				e.writeNewLine()
-			}
-		}
+	l := len(keys)
+	if l == 0 {
+		return
+	}
+	e.writeNewLine()
+	e.indent++
+	for _, key := range keys {
 		e.writeIndent()
 		e.buf.WriteString(key)
 		e.writeSpace()
 		e.buf.WriteString("=")
 		e.writeSpace()
 		e.encodeValue(v.MapIndex(reflect.ValueOf(key)), depth)
+		e.buf.WriteString(",")
+		e.writeNewLine()
 	}
+	e.indent--
+	e.writeIndent()
 }
 
 func (e *internalEncoder) writeIndent() {
@@ -334,7 +341,10 @@ func isBlockType(ft reflect.Type, tag wanfTag) bool {
 		ft = ft.Elem()
 	}
 	isStruct := ft.Kind() == reflect.Struct && ft.Name() != "Duration"
-	isMap := ft.Kind() == reflect.Map && tag.KeyField == ""
+	// A map is no longer considered a block type for formatting purposes,
+	// as it should be formatted as `key = {[... ]}` which is an assignment.
+	// The distinction is handled in encodeValue.
+	isMap := false // ft.Kind() == reflect.Map && tag.KeyField == ""
 	return isStruct || isMap
 }
 

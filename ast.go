@@ -359,8 +359,9 @@ func (dl *DurationLiteral) Format(w *bytes.Buffer, indent string, opts FormatOpt
 
 // ListLiteral 表示一个列表, 如 `[el1, el2]`.
 type ListLiteral struct {
-	Token    Token
-	Elements []Expression
+	Token            Token
+	Elements         []Expression
+	HasTrailingComma bool
 }
 
 func (ll *ListLiteral) expressionNode()      {}
@@ -393,6 +394,43 @@ func (ll *ListLiteral) Format(w *bytes.Buffer, indent string, opts FormatOptions
 			el.Format(w, newIndent, opts)
 		}
 		w.WriteString("\n" + indent + "]")
+	}
+}
+
+// MapLiteral 表示一个映射字面量, 如 `{[ key = val ]}`.
+type MapLiteral struct {
+	Token    Token // The '{[' token
+	Elements []*AssignStatement
+}
+
+func (ml *MapLiteral) expressionNode()      {}
+func (ml *MapLiteral) TokenLiteral() string { return string(ml.Token.Literal) }
+func (ml *MapLiteral) String() string {
+	buf := bufferPool.Get().(*bytes.Buffer)
+	defer bufferPool.Put(buf)
+	buf.Reset()
+	ml.Format(buf, "", FormatOptions{Style: StyleDefault, EmptyLines: true})
+	return buf.String()
+}
+func (ml *MapLiteral) Format(w *bytes.Buffer, indent string, opts FormatOptions) {
+	if opts.Style == StyleSingleLine {
+		w.WriteString("{[")
+		for i, el := range ml.Elements {
+			el.Format(w, "", opts)
+			if i < len(ml.Elements)-1 {
+				w.WriteString(",")
+			}
+		}
+		w.WriteString("]}")
+	} else {
+		w.WriteString("{[\n")
+		newIndent := indent + "\t"
+		for _, el := range ml.Elements {
+			w.WriteString(newIndent)
+			el.Format(w, newIndent, opts)
+			w.WriteString(",\n")
+		}
+		w.WriteString(indent + "]}")
 	}
 }
 
