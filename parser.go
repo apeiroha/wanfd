@@ -152,8 +152,6 @@ func (p *Parser) parseStatement() Statement {
 	}
 
 	if stmt == nil {
-		// 在 lint 模式下, 将无法解析的 token 视为一个 lint 错误, 而不是致命的解析错误。
-		// 这使得 linter 在面对不完整的代码时更具弹性。
 		message := fmt.Sprintf("unexpected token %s (%s)", p.curToken.Type, string(p.curToken.Literal))
 		if p.curToken.Type == ILLEGAL {
 			message = string(p.curToken.Literal)
@@ -199,14 +197,14 @@ func (p *Parser) parseStatement() Statement {
 func (p *Parser) parseAssignStatement(leading []*Comment) *AssignStatement {
 	stmt := &AssignStatement{Token: p.curToken, LeadingComments: leading}
 	stmt.Name = &Identifier{Token: p.curToken, Value: string(p.curToken.Literal)}
-	p.nextToken() // advance past name
-	p.nextToken() // advance past '='
+	p.nextToken()
+	p.nextToken()
 	stmt.Value = p.parseExpression(LOWEST)
-	if stmt.Value == nil {
-		stmt.EndToken = stmt.Name.End() // or the '=' token if we stored it
-		return stmt
+	if stmt.Value != nil {
+		stmt.EndToken = stmt.Value.End()
+	} else {
+		stmt.EndToken = stmt.Name.End()
 	}
-	stmt.EndToken = stmt.Value.End()
 	return stmt
 }
 
@@ -233,7 +231,6 @@ func (p *Parser) parseBlockBody() (*RootNode, Token) {
 		if stmt != nil {
 			body.Statements = append(body.Statements, stmt)
 		}
-
 		if p.curTokenIs(COMMA) {
 			p.lintErrors = append(p.lintErrors, LintError{
 				Line:      p.curToken.Line,
@@ -262,11 +259,11 @@ func (p *Parser) parseVarStatement(leading []*Comment) *VarStatement {
 	}
 	p.nextToken()
 	stmt.Value = p.parseExpression(LOWEST)
-	if stmt.Value == nil {
+	if stmt.Value != nil {
+		stmt.EndToken = stmt.Value.End()
+	} else {
 		stmt.EndToken = stmt.Name.End()
-		return stmt
 	}
-	stmt.EndToken = stmt.Value.End()
 	return stmt
 }
 
@@ -301,7 +298,6 @@ func (p *Parser) parseIdentifier() Expression {
 
 func (p *Parser) parseIntegerLiteral() Expression {
 	lit := &IntegerLiteral{Token: p.curToken}
-	// This conversion creates an allocation.
 	value, err := strconv.ParseInt(string(p.curToken.Literal), 0, 64)
 	if err != nil {
 		p.errors = append(p.errors, fmt.Sprintf("could not parse %q as integer", p.curToken.Literal))
@@ -313,7 +309,6 @@ func (p *Parser) parseIntegerLiteral() Expression {
 
 func (p *Parser) parseFloatLiteral() Expression {
 	lit := &FloatLiteral{Token: p.curToken}
-	// This conversion creates an allocation.
 	value, err := strconv.ParseFloat(string(p.curToken.Literal), 64)
 	if err != nil {
 		p.errors = append(p.errors, fmt.Sprintf("could not parse %q as float", p.curToken.Literal))
@@ -329,7 +324,6 @@ func (p *Parser) parseStringLiteral() Expression {
 
 func (p *Parser) parseBooleanLiteral() Expression {
 	lit := &BoolLiteral{Token: p.curToken}
-	// This conversion creates an allocation.
 	value, err := strconv.ParseBool(string(p.curToken.Literal))
 	if err != nil {
 		p.errors = append(p.errors, fmt.Sprintf("could not parse %q as boolean", p.curToken.Literal))
@@ -364,23 +358,22 @@ func (p *Parser) parseMapLiteral() Expression {
 	lit := &MapLiteral{Token: p.curToken}
 	lit.Elements = []*AssignStatement{}
 
-	// Handle empty map: {[]}
 	if p.peekTokenIs(DASH_RBRACE) {
-		p.nextToken() // Consume DASH_LBRACE
-		p.nextToken() // Consume DASH_RBRACE
+		p.nextToken()
+		p.nextToken()
 		lit.EndToken = p.curToken
 		return lit
 	}
 
-	p.nextToken() // Consume DASH_LBRACE, move to the first identifier
+	p.nextToken()
 
 	for !p.curTokenIs(DASH_RBRACE) && !p.curTokenIs(EOF) {
 		stmt := p.parseAssignStatement(nil)
 		if stmt == nil {
-			return nil // Error already logged
+			return nil
 		}
 		lit.Elements = append(lit.Elements, stmt)
-		p.nextToken() // Move past the parsed value
+		p.nextToken()
 
 		if p.curTokenIs(DASH_RBRACE) {
 			p.lintErrors = append(p.lintErrors, LintError{
@@ -397,7 +390,7 @@ func (p *Parser) parseMapLiteral() Expression {
 			p.errors = append(p.errors, fmt.Sprintf("expected comma after map element, got %s", p.curToken.Type))
 			return nil
 		}
-		p.nextToken() // Consume comma
+		p.nextToken()
 	}
 	lit.EndToken = p.curToken
 	return lit
@@ -455,9 +448,9 @@ func (p *Parser) parseExpressionList(end TokenType) ([]Expression, bool, Token) 
 	list = append(list, p.parseExpression(LOWEST))
 
 	for p.peekTokenIs(COMMA) {
-		p.nextToken() // cur is now on comma
+		p.nextToken()
 		commaToken := p.curToken
-		p.nextToken() // cur is now on what's after comma
+		p.nextToken()
 
 		if p.curTokenIs(end) {
 			hasTrailingComma = true
@@ -493,8 +486,11 @@ func (p *Parser) peekError(t TokenType) {
 		p.lintErrors = append(p.lintErrors, LintError{
 			Line:    p.peekToken.Line,
 			Column:  p.peekToken.Column,
+			EndLine: p.peekToken.Line,
+			EndColumn: p.peekToken.Column + len(p.peekToken.Literal),
 			Message: msg,
 			Type:    ErrUnexpectedToken,
+			Args:      []string{string(t), string(p.peekToken.Type)},
 		})
 	} else {
 		p.errors = append(p.errors, msg)
@@ -506,8 +502,11 @@ func (p *Parser) noPrefixParseFnError(t TokenType) {
 		p.lintErrors = append(p.lintErrors, LintError{
 			Line:    p.curToken.Line,
 			Column:  p.curToken.Column,
+			EndLine: p.curToken.Line,
+			EndColumn: p.curToken.Column + len(p.curToken.Literal),
 			Message: msg,
 			Type:    ErrUnexpectedToken,
+			Args:      []string{string(t), ""},
 		})
 	} else {
 		p.errors = append(p.errors, msg)

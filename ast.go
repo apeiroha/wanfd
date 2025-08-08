@@ -14,8 +14,8 @@ var bufferPool = sync.Pool{
 
 // Node 是AST中所有节点的基础接口.
 type Node interface {
-	Pos() Token  // 节点起始位置的Token
-	End() Token  // 节点结束位置的Token
+	Pos() Token
+	End() Token
 	TokenLiteral() string
 	String() string
 	Format(w *bytes.Buffer, indent string, opts FormatOptions)

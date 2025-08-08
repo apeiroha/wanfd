@@ -156,8 +156,12 @@ func TestParserResilience(t *testing.T) {
 	// Check that we got an "unexpected token" error for the EOF.
 	found := false
 	for _, err := range lintErrors {
-		if err.Type == ErrUnexpectedToken {
+		// This error comes from noPrefixParseFnError
+		if err.Type == ErrUnexpectedToken && err.Message == "no prefix parse function for EOF found" {
 			found = true
+			if len(err.Args) != 2 {
+				t.Errorf("Expected 2 arguments for ErrUnexpectedToken, got %d", len(err.Args))
+			}
 			break
 		}
 	}
