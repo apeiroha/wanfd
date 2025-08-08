@@ -1,0 +1,15 @@
+// WANF 示范配置文件
+// 这个文件将被主配置文件导入。
+// 这是一个结构体块, 因此其内部使用【换行符】分隔。
+database {
+	// --- 4.2. 环境变量 (env) ---
+	// 从环境变量 DB_HOST 读取值, 如果未设置, 则使用 "127.0.0.1"。
+	host = env("DB_HOST", "127.0.0.1")
+	port = 5432
+	user = "admin"
+
+	// 从环境变量 DB_PASSWORD 读取值。
+	// 如果此环境变量未设置, 解析将会失败并报错。
+	password = env("DB_PASSWORD")
+	db_name = "w_phoenix_db"
+}

@@ -1,0 +1,20 @@
+// This is a leading comment for the block.
+/*
+  This is a multi-line
+  leading comment.
+*/
+database {
+	// This is a line comment for the block
+	// leading comment for a key
+	host = "localhost" // line comment for a key
+
+	/* another multi-line
+       comment */
+	port = 5432
+}
+
+// leading comment for another block
+// on multiple lines
+another_block {
+	key = "value"
+}

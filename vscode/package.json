@@ -1,0 +1,52 @@
+{
+  "name": "wanf-language-support",
+  "displayName": "WANF Language Support",
+  "description": "Syntax highlighting and linting for the WANF configuration language.",
+  "version": "0.1.0",
+    "repository": { 
+    "type": "git",
+    "url": "https://github.com/WJQSERVER/wanf.git"
+  },
+  "engines": {
+    "vscode": "^1.70.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "main": "./out/extension.js",
+  "activationEvents": [
+    "onLanguage:wanf"
+  ],
+  "scripts": {
+    "vscode:prepublish": "tsgo -p ./",
+    "compile": "tsgo -p ./",
+    "watch": "tsgo -watch -p ./"
+  },
+  "contributes": {
+    "languages": [
+      {
+        "id": "wanf",
+        "aliases": [
+          "WANF",
+          "wanf"
+        ],
+        "extensions": [
+          ".wanf"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "wanf",
+        "scopeName": "source.wanf",
+        "path": "./syntaxes/wanf.tmLanguage.json"
+      }
+    ]
+  },
+  "devDependencies": {
+    "@typescript/native-preview": "7.0.0-dev.20250805.1",
+    "@types/vscode": "^1.70.0",
+    "@types/node": "^18.x"
+  }
+}

@@ -1,0 +1,94 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "WANF",
+  "scopeName": "source.wanf",
+  "patterns": [
+    {
+      "include": "#comments"
+    },
+    {
+      "include": "#keywords"
+    },
+    {
+      "include": "#strings"
+    },
+    {
+      "include": "#constants"
+    },
+    {
+      "include": "#entities"
+    }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.line.double-slash.wanf",
+          "match": "//.*"
+        },
+        {
+          "name": "comment.block.wanf",
+          "begin": "/\\*",
+          "end": "\\*/"
+        }
+      ]
+    },
+    "keywords": {
+      "patterns": [
+        {
+          "name": "keyword.control.wanf",
+          "match": "\\b(import|var)\\b"
+        }
+      ]
+    },
+    "strings": {
+      "patterns": [
+        {
+          "name": "string.quoted.double.wanf",
+          "begin": "\"",
+          "end": "\"",
+          "patterns": [
+            {
+              "name": "constant.character.escape.wanf",
+              "match": "\\\\."
+            }
+          ]
+        },
+        {
+          "name": "string.quoted.single.wanf",
+          "begin": "'",
+          "end": "'"
+        },
+        {
+          "name": "string.quoted.raw.wanf",
+          "begin": "`",
+          "end": "`"
+        }
+      ]
+    },
+    "constants": {
+      "patterns": [
+        {
+          "name": "constant.language.boolean.wanf",
+          "match": "\\b(true|false)\\b"
+        },
+        {
+          "name": "constant.numeric.wanf",
+          "match": "\\b[0-9]+(\\.[0-9]+)?(ns|us|ms|s|m|h)?\\b"
+        }
+      ]
+    },
+    "entities": {
+      "patterns": [
+        {
+          "name": "entity.name.function.wanf",
+          "match": "\\b(env)(?=\\()"
+        },
+        {
+          "name": "variable.other.wanf",
+          "match": "\\b[a-zA-Z_][a-zA-Z0-9_]*\\b"
+        }
+      ]
+    }
+  }
+}

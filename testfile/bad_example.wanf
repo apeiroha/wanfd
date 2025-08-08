@@ -1,0 +1,4 @@
+# This block appears once, so the "main" label is redundant.
+database "main" {
+    host = "localhost",
+}
