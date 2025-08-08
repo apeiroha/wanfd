@@ -12,7 +12,7 @@ database {
 name = "My App"
 info = [
 	"Info 1",
-	"Info 2"
+	"Info 2",
 ]
 
 dashMap {

@@ -6,8 +6,3 @@ out/
 dist/
 
 *.vsix
-
-# Go binaries
-wanflint/wanflint
-wanflint_binary
-wanflint_fmt_tool
