@@ -38,7 +38,7 @@ server {
 	port = 8080
 	host = "0.0.0.0"
 }`,
-			wantErrors: []string{"redundant comma", "contains only key-value pairs"},
+			wantErrors: []string{"redundant comma"},
 		},
 		{
 			name: "well-formatted file",
@@ -92,6 +92,18 @@ list = [
 	"b"
 ]`,
 			wantErrors: []string{"redundant trailing comma in list literal"},
+		},
+		{
+			name: "missing trailing comma in map",
+			input: `
+dashMap = {[
+	key1 = "value1"
+]}`,
+			wantOutput: `
+dashMap = {[
+		key1 = "value1",
+]}`,
+			wantErrors: []string{"missing trailing comma"},
 		},
 	}
 

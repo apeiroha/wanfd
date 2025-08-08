@@ -142,10 +142,14 @@ func (e *internalEncoder) encodeField(f fieldInfo, depth int) {
 
 	if f.isBlock {
 		if f.value.Kind() == reflect.Map {
+			// Map blocks are assignments, so they need an equals sign.
+			e.buf.WriteString("=")
+			e.writeSpace()
 			e.buf.WriteString("{[")
 			e.encodeMap(f.value, depth+1)
 			e.buf.WriteString("]}")
 		} else {
+			// Struct blocks do not have an equals sign.
 			e.buf.WriteString("{")
 			e.writeNewLine()
 			e.indent++
@@ -190,6 +194,10 @@ func (e *internalEncoder) encodeValue(v reflect.Value, depth int) {
 	case reflect.Slice, reflect.Array:
 		e.encodeSlice(v, depth)
 	case reflect.Struct:
+		if v.NumField() == 0 {
+			e.buf.WriteString("{}")
+			return
+		}
 		e.buf.WriteString("{")
 		e.writeNewLine()
 		e.indent++
@@ -344,7 +352,7 @@ func isBlockType(ft reflect.Type, tag wanfTag) bool {
 	// A map is no longer considered a block type for formatting purposes,
 	// as it should be formatted as `key = {[... ]}` which is an assignment.
 	// The distinction is handled in encodeValue.
-	isMap := false // ft.Kind() == reflect.Map && tag.KeyField == ""
+	isMap := ft.Kind() == reflect.Map && tag.KeyField == ""
 	return isStruct || isMap
 }
 

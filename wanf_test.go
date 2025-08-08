@@ -44,6 +44,7 @@ func TestEncoder_Styles(t *testing.T) {
 					`}`,
 					``,
 					`b_kv = 123`,
+					``,
 					`d_map = {[`,
 					`	y_key = "y",`,
 					`	z_key = "z",`,
@@ -167,5 +168,61 @@ func TestFieldMatching_Fallback(t *testing.T) {
 	}
 	if !reflect.DeepEqual(decodedCfg, expected) {
 		t.Errorf("Fallback decoding failed. Got %+v, want %+v", decodedCfg, expected)
+	}
+}
+
+func TestASTFormatter(t *testing.T) {
+	input := `
+// Initial unformatted file
+a_kv = "value"
+a_map = {[
+  key1 = "val1",
+]}
+a_struct {
+  b_kv = "value2"
+}
+set_like_map = {[
+  item1 = {
+  },
+  item2 = {}
+]}
+another_kv = 123
+`
+	want := `
+// Initial unformatted file
+a_kv = "value"
+
+a_map = {[
+		key1 = "val1",
+]}
+
+a_struct {
+	b_kv = "value2"
+}
+
+set_like_map = {[
+		item1 = {},
+		item2 = {},
+]}
+
+another_kv = 123
+`
+
+	l := NewLexer([]byte(input))
+	p := NewParser(l)
+	program := p.ParseProgram()
+	if len(p.Errors()) > 0 {
+		t.Fatalf("Parser failed: %v", p.Errors())
+	}
+
+	var buf bytes.Buffer
+	program.Format(&buf, "", FormatOptions{Style: StyleDefault, EmptyLines: true})
+
+	// Normalize whitespace for comparison
+	got := strings.TrimSpace(buf.String())
+	wantNormalized := strings.TrimSpace(want)
+
+	if got != wantNormalized {
+		t.Errorf("AST Formatter output mismatch:\n--- want\n%s\n--- got\n%s", wantNormalized, got)
 	}
 }

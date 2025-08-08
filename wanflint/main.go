@@ -166,9 +166,25 @@ func formatFile(path string, style string) error {
 
 	program, errs := wanf.Lint(data)
 	if len(errs) > 0 {
-		// 在格式化模式下,即使存在非致命错误,我们仍然会继续格式化,
-		// 但会将错误信息打印到 stderr.
-		// 注意: 在并发模式下,这里的打印可能会交错,这是可以接受的.
+		hasFatalError := false
+		for _, e := range errs {
+			// A "parser error: " prefix indicates a fatal error from which the
+			// parser could not recover. Formatting should be aborted.
+			if len(e.Message) > 14 && e.Message[:14] == "parser error: " {
+				hasFatalError = true
+				break
+			}
+		}
+
+		if hasFatalError {
+			fmt.Fprintf(os.Stderr, "Error: found fatal errors in %s, formatting aborted:\n", path)
+			for _, e := range errs {
+				fmt.Fprintf(os.Stderr, "  - %s\n", e.Error())
+			}
+			return fmt.Errorf("fatal errors encountered in %s", path)
+		}
+
+		// For non-fatal formatting warnings, just print them.
 		fmt.Fprintf(os.Stderr, "Warning: found %d issues in %s:\n", len(errs), path)
 		for _, e := range errs {
 			fmt.Fprintf(os.Stderr, "  - %s\n", e.Error())

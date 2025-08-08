@@ -69,8 +69,15 @@ func (p *RootNode) String() string {
 func (p *RootNode) Format(w *bytes.Buffer, indent string, opts FormatOptions) {
 	// 辅助函数, 用于判断语句类型和是否有注释
 	isBlock := func(s Statement) bool {
-		_, ok := s.(*BlockStatement)
-		return ok
+		if _, ok := s.(*BlockStatement); ok {
+			return true
+		}
+		if as, ok := s.(*AssignStatement); ok {
+			if _, ok := as.Value.(*MapLiteral); ok {
+				return true
+			}
+		}
+		return false
 	}
 	hasComments := func(s Statement) bool {
 		return len(s.GetLeadingComments()) > 0
@@ -454,6 +461,11 @@ func (bl *BlockLiteral) Format(w *bytes.Buffer, indent string, opts FormatOption
 		w.WriteString("{")
 		bl.Body.Format(w, "", opts)
 		w.WriteString("}")
+		return
+	}
+
+	if bl.Body == nil || len(bl.Body.Statements) == 0 {
+		w.WriteString("{}")
 	} else {
 		w.WriteString("{\n")
 		bl.Body.Format(w, indent+"\t", opts)

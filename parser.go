@@ -41,6 +41,7 @@ const (
 	ErrRedundantComma
 	ErrRedundantLabel
 	ErrUnusedVariable
+	ErrMissingTrailingComma
 )
 
 type LintError struct {
@@ -363,8 +364,14 @@ func (p *Parser) parseMapLiteral() Expression {
 		p.nextToken() // Move past the parsed value
 
 		if p.curTokenIs(DASH_RBRACE) {
-			p.errors = append(p.errors, "missing trailing comma before ']}'")
-			return nil
+			p.lintErrors = append(p.lintErrors, LintError{
+				Line:      p.curToken.Line,
+				Column:    p.curToken.Column,
+				Message:   "missing trailing comma before ']}'",
+				Level:     ErrorLevelFmt,
+				Type:      ErrMissingTrailingComma,
+			})
+			break
 		}
 
 		if !p.curTokenIs(COMMA) {

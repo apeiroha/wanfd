@@ -143,30 +143,6 @@ func (a *astAnalyzer) check(node Node) Node {
 		if n.Body != nil {
 			n.Body = a.check(n.Body).(*RootNode)
 		}
-		isOnlyAssignments := true
-		if n.Body != nil && len(n.Body.Statements) > 0 {
-			for _, stmt := range n.Body.Statements {
-				if _, ok := stmt.(*AssignStatement); !ok {
-					isOnlyAssignments = false
-					break
-				}
-			}
-		} else {
-			isOnlyAssignments = false
-		}
-		if isOnlyAssignments && n.Label == nil {
-			err := LintError{
-				Line:      n.Token.Line,
-				Column:    n.Token.Column,
-				EndLine:   n.Token.Line,
-				EndColumn: n.Token.Column + len(n.Name.Value),
-				Message:   fmt.Sprintf("block %q contains only key-value pairs; if it represents a map, consider using the '{[...]}' syntax for clarity", n.Name.Value),
-				Level:     ErrorLevelLint,
-				Type:      ErrMapLikeBlock,
-				Args:      []string{n.Name.Value},
-			}
-			a.errors = append(a.errors, err)
-		}
 		if n.Label != nil && a.blockCounts[n.Name.Value] == 1 {
 			err := LintError{
 				Line:      n.Token.Line,

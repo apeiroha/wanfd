@@ -1,0 +1,4 @@
+a_kv = "value"
+a_map = a_struct
+b_kv = "value2"
+set_like_map = another_kv
