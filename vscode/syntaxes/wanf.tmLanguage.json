@@ -7,16 +7,19 @@
       "include": "#comments"
     },
     {
+      "include": "#definitions"
+    },
+    {
       "include": "#keywords"
+    },
+    {
+      "include": "#entities"
     },
     {
       "include": "#strings"
     },
     {
       "include": "#constants"
-    },
-    {
-      "include": "#entities"
     }
   ],
   "repository": {
@@ -37,7 +40,7 @@
       "patterns": [
         {
           "name": "keyword.control.wanf",
-          "match": "\\b(import|var)\\b"
+          "match": "\\b(import)\\b"
         }
       ]
     },
@@ -83,10 +86,32 @@
         {
           "name": "entity.name.function.wanf",
           "match": "\\b(env)(?=\\()"
+        }
+      ]
+    },
+    "definitions": {
+      "patterns": [
+        {
+          "comment": "匹配 'var' 关键字和其后定义的变量名",
+          "match": "\\b(var)\\s+([a-zA-Z_][a-zA-Z0-9_]*)\\b",
+          "captures": {
+            "1": { "name": "keyword.control.wanf" },
+            "2": { "name": "variable.other.definition.wanf" }
+          }
         },
         {
-          "name": "variable.other.wanf",
-          "match": "\\b[a-zA-Z_][a-zA-Z0-9_]*\\b"
+          "comment": "匹配块类型, 如 'server' 或 'database'",
+          "match": "^\\s*([a-zA-Z_][a-zA-Z0-9_]*)(?=\\s*(\\{|\"))",
+          "captures": {
+            "1": { "name": "entity.name.type.wanf" }
+          }
+        },
+        {
+          "comment": "匹配块内部的配置键 (key)",
+          "match": "([a-zA-Z_][a-zA-Z0-9_]*)(?=\\s*=)",
+          "captures": {
+            "1": { "name": "entity.name.tag.wanf" }
+          }
         }
       ]
     }

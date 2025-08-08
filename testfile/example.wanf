@@ -16,9 +16,9 @@ application {
 
 logging {
 	level = "info"
-	format_template = "[${level}] ${timestamp}: ${message}
+	format_template = `[${level}] ${timestamp}: ${message}
     Caller: ${caller}
-    "
+    `
 }
 
 server "http_api" {
@@ -36,7 +36,7 @@ server "grpc_api" {
 feature_flags = [
 	"realtime_dashboard",
 	"extended_api",
-	"beta_features"
+	"beta_features",
 ]
 middleware = [
 	{
@@ -51,5 +51,5 @@ middleware = [
 	{
 		id = "rate_limiter"
 		enabled = false
-	}
+	},
 ]

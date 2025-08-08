@@ -197,19 +197,19 @@ WANF 解析器通过 Go 结构体字段的 `wanf` 标签来确定映射关系。
     2.  列表中的每个对象都是一个 `Service` 结构体。
     3.  使用每个 `Service` 结构体中 `name` 字段的值作为最终 Go `map` 的键。
 
-```go
+```wanf
 // WANF 配置
 // 列表将被转换为 map
-components = [
-    {
+components = {[
+    "1" {
         id = "comp_a"
         priority = 10
     },
-    {
+    "2" {
         id = "comp_b"
         priority = 20
     },
-]
+]}
 ```
 
 ```go
@@ -223,6 +223,38 @@ type RootConfig struct {
     // "components" 列表将根据 "id" 字段的值被解析为一个 map
     Components map[string]Component `wanf:"components,key=id"`
 }
+```
+
+```wanf
+dashMap {[
+	key1 = "value1",
+	key2 = "value2",
+]}
+```
+
+```go
+DashMap  map[string]string   `wanf:"dashMap"`
+
+		DashMap: map[string]string{
+			"key1": "value1",
+			"key2": "value2",
+		},
+```
+
+```wanf
+sList {[
+	item1 = {}
+	item2 = {}
+]}
+```
+
+```go
+	SList    map[string]struct{} `wanf:"sList"`
+
+		SList: map[string]struct{}{
+			"item1": {},
+			"item2": {},
+		},
 ```
 
 #### **6.** 错误处理与 Lint 模式
