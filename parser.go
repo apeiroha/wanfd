@@ -42,6 +42,7 @@ const (
 	ErrRedundantLabel
 	ErrUnusedVariable
 	ErrExpectDiffToken
+	ErrMissingComma
 )
 
 type LintError struct {
@@ -382,7 +383,18 @@ func (p *Parser) parseMapElementList() []Statement {
 	}
 
 	if !p.curTokenIs(RBRACK) {
-		p.peekError(RBRACK)
+		// 改进错误提示: 本应是逗号或 RBRACK, 但都不是, 说明缺少逗号
+		msg := fmt.Sprintf("missing comma before %s", p.curToken.Type)
+		p.errors = append(p.errors, LintError{
+			Line:      p.curToken.Line,
+			Column:    p.curToken.Column,
+			EndLine:   p.curToken.Line,
+			EndColumn: p.curToken.Column + len(p.curToken.Literal),
+			Message:   msg,
+			Level:     ErrorLevelLint,
+			Type:      ErrMissingComma,
+			Args:      []string{string(p.curToken.Type)},
+		})
 		return nil
 	}
 
@@ -442,13 +454,30 @@ func (p *Parser) parseExpressionList(end TokenType) []Expression {
 	for p.peekTokenIs(COMMA) {
 		p.nextToken()
 		p.nextToken()
-		if p.curTokenIs(end) {
+		if p.curTokenIs(end) { // Handles trailing comma
 			break
 		}
 		list = append(list, p.parseExpression(LOWEST))
 	}
+
 	if !p.curTokenIs(end) {
-		p.expectPeek(end)
+		if p.peekTokenIs(end) {
+			p.nextToken()
+		} else {
+			p.nextToken() // Move to the offending token to report error on it
+			msg := fmt.Sprintf("missing comma before %s", p.curToken.Type)
+			p.errors = append(p.errors, LintError{
+				Line:      p.curToken.Line,
+				Column:    p.curToken.Column,
+				EndLine:   p.curToken.Line,
+				EndColumn: p.curToken.Column + len(p.curToken.Literal),
+				Message:   msg,
+				Level:     ErrorLevelLint,
+				Type:      ErrMissingComma,
+				Args:      []string{string(p.curToken.Type)},
+			})
+			return nil
+		}
 	}
 	return list
 }

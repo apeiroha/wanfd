@@ -196,6 +196,7 @@ function handleExecutionError(error: any, commandName: 'lint' | 'fmt'): void {
 // 	ErrRedundantLabel (3)
 // 	ErrUnusedVariable (4)
 // 	ErrExpectDiffToken (5)
+// 	ErrMissingComma (6)
 // )
 const translationMap: { [key: number]: string } = {
 	1: "意外的标记: %s (%s)",
@@ -203,6 +204,7 @@ const translationMap: { [key: number]: string } = {
 	3: "块“%s”只定义了一次, 标签“%s”是多余的。",
 	4: "变量“%s”已声明但从未使用。",
 	5: "期望下一个标记是 %s, 但得到的是 %s",
+	6: "在标记 '%s' 前缺少逗号",
 };
 
 /**
