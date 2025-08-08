@@ -154,6 +154,15 @@ list = [
 	{},
 ]`,
 		},
+		{
+			name: "parser error with correct location",
+			input: `
+list = [
+	"a"
+	"b"
+]`,
+			wantErrors: []string{"line 4:2: parser error: expected next token to be ], got STRING instead"},
+		},
 	}
 
 	for _, tc := range testCases {
@@ -173,6 +182,8 @@ list = [
 						t.Errorf("expected error %q to contain %q", errs[i], wantErr)
 					}
 				}
+				// If we expected errors and got them, don't check formatting output.
+				return
 			} else if len(errs) > 0 {
 				t.Fatalf("expected no errors, got: %v", errs)
 			}

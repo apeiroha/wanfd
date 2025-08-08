@@ -20,15 +20,7 @@ func Lint(data []byte) (*RootNode, []LintError) {
 	p.SetLintMode(true)
 	program := p.ParseProgram()
 	if len(p.Errors()) > 0 {
-		return program, []LintError{
-			{
-				Line:      1,
-				Column:    1,
-				EndLine:   1,
-				EndColumn: 1,
-				Message:   "parser error: " + strings.Join(p.Errors(), "; "),
-			},
-		}
+		return program, p.Errors()
 	}
 	allErrors := p.LintErrors()
 	analyzer := &astAnalyzer{
@@ -226,7 +218,11 @@ func NewDecoder(r io.Reader, opts ...DecoderOption) (*Decoder, error) {
 	p := NewParser(l)
 	program := p.ParseProgram()
 	if len(p.Errors()) > 0 {
-		return nil, fmt.Errorf("parser errors: %s", strings.Join(p.Errors(), "\n"))
+		var errs []string
+		for _, err := range p.Errors() {
+			errs = append(errs, err.Error())
+		}
+		return nil, fmt.Errorf("parser errors: %s", strings.Join(errs, "\n"))
 	}
 	d := &internalDecoder{vars: make(map[string]interface{})}
 	for _, opt := range opts {
@@ -274,7 +270,11 @@ func processImports(stmts []Statement, basePath string, processed map[string]boo
 		p := NewParser(l)
 		program := p.ParseProgram()
 		if len(p.Errors()) > 0 {
-			return nil, fmt.Errorf("parser errors in imported file %q: %s", importPath, strings.Join(p.Errors(), "\n"))
+			var errs []string
+			for _, err := range p.Errors() {
+				errs = append(errs, err.Error())
+			}
+			return nil, fmt.Errorf("parser errors in imported file %q: %s", importPath, strings.Join(errs, "\n"))
 		}
 		importedStmts, err := processImports(program.Statements, filepath.Dir(absImportPath), processed)
 		if err != nil {
