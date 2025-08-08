@@ -14,6 +14,8 @@ var bufferPool = sync.Pool{
 
 // Node 是AST中所有节点的基础接口.
 type Node interface {
+	Pos() Token  // 节点起始位置的Token
+	End() Token  // 节点结束位置的Token
 	TokenLiteral() string
 	String() string
 	Format(w *bytes.Buffer, indent string, opts FormatOptions)
@@ -40,6 +42,8 @@ type Comment struct {
 
 func (c *Comment) expressionNode()      {}
 func (c *Comment) statementNode()       {}
+func (c *Comment) Pos() Token           { return c.Token }
+func (c *Comment) End() Token           { return c.Token }
 func (c *Comment) TokenLiteral() string { return string(c.Token.Literal) }
 func (c *Comment) String() string       { return c.Text }
 func (c *Comment) Format(w *bytes.Buffer, indent string, opts FormatOptions) {
@@ -51,6 +55,18 @@ type RootNode struct {
 	Statements []Statement
 }
 
+func (p *RootNode) Pos() Token {
+	if len(p.Statements) > 0 {
+		return p.Statements[0].Pos()
+	}
+	return Token{}
+}
+func (p *RootNode) End() Token {
+	if len(p.Statements) > 0 {
+		return p.Statements[len(p.Statements)-1].End()
+	}
+	return Token{}
+}
 func (p *RootNode) TokenLiteral() string {
 	if len(p.Statements) > 0 {
 		return p.Statements[0].TokenLiteral()
@@ -104,13 +120,16 @@ func (p *RootNode) Format(w *bytes.Buffer, indent string, opts FormatOptions) {
 // AssignStatement 表示一个赋值语句, 如 `key = value`.
 type AssignStatement struct {
 	Token           Token
+	EndToken        Token // 表达式的最后一个token, 通常是值的最后一个token或行尾注释
 	Name            *Identifier
 	Value           Expression
 	LeadingComments []*Comment // 前置注释
 	LineComment     *Comment   // 行尾注释
 }
 
-func (as *AssignStatement) statementNode() {}
+func (as *AssignStatement) statementNode()      {}
+func (as *AssignStatement) Pos() Token          { return as.Token }
+func (as *AssignStatement) End() Token          { return as.EndToken }
 func (as *AssignStatement) GetLeadingComments() []*Comment {
 	return as.LeadingComments
 }
@@ -143,13 +162,16 @@ func (as *AssignStatement) Format(w *bytes.Buffer, indent string, opts FormatOpt
 // BlockStatement 表示一个块, 如 `database { ... }`.
 type BlockStatement struct {
 	Token           Token
+	EndToken        Token // '}' token
 	Name            *Identifier
 	Label           *StringLiteral
 	Body            *RootNode
 	LeadingComments []*Comment // 前置注释
 }
 
-func (bs *BlockStatement) statementNode() {}
+func (bs *BlockStatement) statementNode()      {}
+func (bs *BlockStatement) Pos() Token          { return bs.Token }
+func (bs *BlockStatement) End() Token          { return bs.EndToken }
 func (bs *BlockStatement) GetLeadingComments() []*Comment {
 	return bs.LeadingComments
 }
@@ -190,13 +212,16 @@ func (bs *BlockStatement) Format(w *bytes.Buffer, indent string, opts FormatOpti
 // VarStatement 表示一个变量声明, 如 `var name = value`.
 type VarStatement struct {
 	Token           Token
+	EndToken        Token
 	Name            *Identifier
 	Value           Expression
 	LeadingComments []*Comment // 前置注释
 	LineComment     *Comment   // 行尾注释
 }
 
-func (vs *VarStatement) statementNode() {}
+func (vs *VarStatement) statementNode()      {}
+func (vs *VarStatement) Pos() Token          { return vs.Token }
+func (vs *VarStatement) End() Token          { return vs.EndToken }
 func (vs *VarStatement) GetLeadingComments() []*Comment {
 	return vs.LeadingComments
 }
@@ -230,12 +255,15 @@ func (vs *VarStatement) Format(w *bytes.Buffer, indent string, opts FormatOption
 // ImportStatement 表示一个导入语句, 如 `import "path/to/file.wanf"`.
 type ImportStatement struct {
 	Token           Token
+	EndToken        Token
 	Path            *StringLiteral
 	LeadingComments []*Comment // 前置注释
 	LineComment     *Comment   // 行尾注释
 }
 
-func (is *ImportStatement) statementNode() {}
+func (is *ImportStatement) statementNode()      {}
+func (is *ImportStatement) Pos() Token          { return is.Token }
+func (is *ImportStatement) End() Token          { return is.EndToken }
 func (is *ImportStatement) GetLeadingComments() []*Comment {
 	return is.LeadingComments
 }
@@ -271,6 +299,8 @@ type Identifier struct {
 }
 
 func (i *Identifier) expressionNode()      {}
+func (i *Identifier) Pos() Token           { return i.Token }
+func (i *Identifier) End() Token           { return i.Token }
 func (i *Identifier) TokenLiteral() string { return string(i.Token.Literal) }
 func (i *Identifier) String() string       { return i.Value }
 func (i *Identifier) Format(w *bytes.Buffer, indent string, opts FormatOptions) {
@@ -291,6 +321,8 @@ type StringLiteral struct {
 
 func (sl *StringLiteral) expressionNode()      {}
 func (sl *StringLiteral) literalNode()         {}
+func (sl *StringLiteral) Pos() Token           { return sl.Token }
+func (sl *StringLiteral) End() Token           { return sl.Token }
 func (sl *StringLiteral) TokenLiteral() string { return string(sl.Token.Literal) }
 func (sl *StringLiteral) String() string {
 	if strings.Contains(sl.Value, "\n") {
@@ -316,6 +348,8 @@ type IntegerLiteral struct {
 
 func (il *IntegerLiteral) expressionNode()      {}
 func (il *IntegerLiteral) literalNode()         {}
+func (il *IntegerLiteral) Pos() Token           { return il.Token }
+func (il *IntegerLiteral) End() Token           { return il.Token }
 func (il *IntegerLiteral) TokenLiteral() string { return string(il.Token.Literal) }
 func (il *IntegerLiteral) String() string       { return string(il.Token.Literal) }
 func (il *IntegerLiteral) Format(w *bytes.Buffer, indent string, opts FormatOptions) {
@@ -330,6 +364,8 @@ type FloatLiteral struct {
 
 func (fl *FloatLiteral) expressionNode()      {}
 func (fl *FloatLiteral) literalNode()         {}
+func (fl *FloatLiteral) Pos() Token           { return fl.Token }
+func (fl *FloatLiteral) End() Token           { return fl.Token }
 func (fl *FloatLiteral) TokenLiteral() string { return string(fl.Token.Literal) }
 func (fl *FloatLiteral) String() string       { return string(fl.Token.Literal) }
 func (fl *FloatLiteral) Format(w *bytes.Buffer, indent string, opts FormatOptions) {
@@ -344,6 +380,8 @@ type BoolLiteral struct {
 
 func (bl *BoolLiteral) expressionNode()      {}
 func (bl *BoolLiteral) literalNode()         {}
+func (bl *BoolLiteral) Pos() Token           { return bl.Token }
+func (bl *BoolLiteral) End() Token           { return bl.Token }
 func (bl *BoolLiteral) TokenLiteral() string { return string(bl.Token.Literal) }
 func (bl *BoolLiteral) String() string       { return string(bl.Token.Literal) }
 func (bl *BoolLiteral) Format(w *bytes.Buffer, indent string, opts FormatOptions) {
@@ -358,6 +396,8 @@ type DurationLiteral struct {
 
 func (dl *DurationLiteral) expressionNode()      {}
 func (dl *DurationLiteral) literalNode()         {}
+func (dl *DurationLiteral) Pos() Token           { return dl.Token }
+func (dl *DurationLiteral) End() Token           { return dl.Token }
 func (dl *DurationLiteral) TokenLiteral() string { return string(dl.Token.Literal) }
 func (dl *DurationLiteral) String() string       { return string(dl.Token.Literal) }
 func (dl *DurationLiteral) Format(w *bytes.Buffer, indent string, opts FormatOptions) {
@@ -366,12 +406,16 @@ func (dl *DurationLiteral) Format(w *bytes.Buffer, indent string, opts FormatOpt
 
 // ListLiteral 表示一个列表, 如 `[el1, el2]`.
 type ListLiteral struct {
-	Token            Token
-	Elements         []Expression
-	HasTrailingComma bool
+	Token              Token // '[' token
+	EndToken           Token // ']' token
+	Elements           []Expression
+	HasTrailingComma   bool
+	TrailingCommaToken Token // an optional trailing comma
 }
 
 func (ll *ListLiteral) expressionNode()      {}
+func (ll *ListLiteral) Pos() Token           { return ll.Token }
+func (ll *ListLiteral) End() Token           { return ll.EndToken }
 func (ll *ListLiteral) TokenLiteral() string { return string(ll.Token.Literal) }
 func (ll *ListLiteral) String() string {
 	buf := bufferPool.Get().(*bytes.Buffer)
@@ -407,10 +451,13 @@ func (ll *ListLiteral) Format(w *bytes.Buffer, indent string, opts FormatOptions
 // MapLiteral 表示一个映射字面量, 如 `{[ key = val ]}`.
 type MapLiteral struct {
 	Token    Token // The '{[' token
+	EndToken Token // The ']}' token
 	Elements []*AssignStatement
 }
 
 func (ml *MapLiteral) expressionNode()      {}
+func (ml *MapLiteral) Pos() Token           { return ml.Token }
+func (ml *MapLiteral) End() Token           { return ml.EndToken }
 func (ml *MapLiteral) TokenLiteral() string { return string(ml.Token.Literal) }
 func (ml *MapLiteral) String() string {
 	buf := bufferPool.Get().(*bytes.Buffer)
@@ -443,11 +490,14 @@ func (ml *MapLiteral) Format(w *bytes.Buffer, indent string, opts FormatOptions)
 
 // BlockLiteral 表示一个匿名的块, 通常用作值, 例如在列表中.
 type BlockLiteral struct {
-	Token Token
-	Body  *RootNode
+	Token    Token // '{' token
+	EndToken Token // '}' token
+	Body     *RootNode
 }
 
 func (bl *BlockLiteral) expressionNode()      {}
+func (bl *BlockLiteral) Pos() Token           { return bl.Token }
+func (bl *BlockLiteral) End() Token           { return bl.EndToken }
 func (bl *BlockLiteral) TokenLiteral() string { return string(bl.Token.Literal) }
 func (bl *BlockLiteral) String() string {
 	buf := bufferPool.Get().(*bytes.Buffer)
@@ -475,11 +525,14 @@ func (bl *BlockLiteral) Format(w *bytes.Buffer, indent string, opts FormatOption
 
 // VarExpression 表示一个变量引用, 如 `${var}`.
 type VarExpression struct {
-	Token Token
-	Name  string
+	Token    Token // '${' token
+	EndToken Token // '}' token
+	Name     string
 }
 
 func (ve *VarExpression) expressionNode()      {}
+func (ve *VarExpression) Pos() Token           { return ve.Token }
+func (ve *VarExpression) End() Token           { return ve.EndToken }
 func (ve *VarExpression) TokenLiteral() string { return string(ve.Token.Literal) }
 func (ve *VarExpression) String() string       { return "${" + ve.Name + "}" }
 func (ve *VarExpression) Format(w *bytes.Buffer, indent string, opts FormatOptions) {
@@ -488,12 +541,15 @@ func (ve *VarExpression) Format(w *bytes.Buffer, indent string, opts FormatOptio
 
 // EnvExpression 表示对 `env()` 函数的调用.
 type EnvExpression struct {
-	Token        Token
+	Token        Token // 'env' token
+	EndToken     Token // ')' token
 	Name         *StringLiteral
 	DefaultValue *StringLiteral
 }
 
 func (ee *EnvExpression) expressionNode()      {}
+func (ee *EnvExpression) Pos() Token           { return ee.Token }
+func (ee *EnvExpression) End() Token           { return ee.EndToken }
 func (ee *EnvExpression) TokenLiteral() string { return string(ee.Token.Literal) }
 func (ee *EnvExpression) String() string {
 	buf := bufferPool.Get().(*bytes.Buffer)

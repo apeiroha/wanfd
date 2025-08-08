@@ -144,24 +144,29 @@ func (a *astAnalyzer) check(node Node) Node {
 			n.Body = a.check(n.Body).(*RootNode)
 		}
 		if n.Label != nil && a.blockCounts[n.Name.Value] == 1 {
+			labelToken := n.Label.Pos()
 			err := LintError{
-				Line:      n.Token.Line,
-				Column:    n.Token.Column,
-				EndLine:   n.Token.Line,
-				EndColumn: n.Token.Column + len(n.Name.Value),
+				Line:      labelToken.Line,
+				Column:    labelToken.Column,
+				EndLine:   labelToken.Line,
+				EndColumn: labelToken.Column + len(labelToken.Literal),
 				Message:   fmt.Sprintf("block %q is defined only once, the label %q is redundant", n.Name.Value, n.Label.Value),
 				Level:     ErrorLevelFmt,
 				Type:      ErrRedundantLabel,
 				Args:      []string{n.Name.Value, n.Label.Value},
 			}
 			a.errors = append(a.errors, err)
-			return &BlockStatement{
+			bs := &BlockStatement{
 				Token:           n.Token,
+				EndToken:        n.EndToken,
 				Name:            n.Name,
 				Label:           nil,
 				Body:            n.Body,
 				LeadingComments: n.LeadingComments,
 			}
+			// Since we are removing the label, the end token might change if the label was the last thing.
+			// However, the block's end token is always '}', so it should be fine.
+			return bs
 		}
 		return n
 	case *BlockLiteral:
@@ -183,9 +188,12 @@ func (a *astAnalyzer) check(node Node) Node {
 		return n
 	case *ListLiteral:
 		if n.HasTrailingComma {
+			comma := n.TrailingCommaToken
 			err := LintError{
-				Line:      n.Token.Line,
-				Column:    n.Token.Column,
+				Line:      comma.Line,
+				Column:    comma.Column,
+				EndLine:   comma.Line,
+				EndColumn: comma.Column + len(comma.Literal),
 				Message:   "redundant trailing comma in list literal",
 				Level:     ErrorLevelLint,
 				Type:      ErrRedundantTrailingComma,

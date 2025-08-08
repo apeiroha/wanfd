@@ -178,16 +178,19 @@ func (p *Parser) parseStatement() Statement {
 		return nil
 	}
 
-	if p.peekTokenIs(COMMENT) && p.peekToken.Line == p.curToken.Line {
+	if p.peekTokenIs(COMMENT) && p.peekToken.Line == stmt.End().Line {
 		p.nextToken()
 		lineComment := &Comment{Token: p.curToken, Text: string(p.curToken.Literal)}
 		switch s := stmt.(type) {
 		case *AssignStatement:
 			s.LineComment = lineComment
+			s.EndToken = lineComment.End()
 		case *VarStatement:
 			s.LineComment = lineComment
+			s.EndToken = lineComment.End()
 		case *ImportStatement:
 			s.LineComment = lineComment
+			s.EndToken = lineComment.End()
 		}
 	}
 
@@ -201,6 +204,7 @@ func (p *Parser) parseAssignStatement(leading []*Comment) *AssignStatement {
 	p.nextToken()
 	p.nextToken()
 	stmt.Value = p.parseExpression(LOWEST)
+	stmt.EndToken = stmt.Value.End()
 	return stmt
 }
 
@@ -214,11 +218,11 @@ func (p *Parser) parseBlockStatement(leading []*Comment) *BlockStatement {
 	if !p.expectPeek(LBRACE) {
 		return nil
 	}
-	stmt.Body = p.parseBlockBody()
+	stmt.Body, stmt.EndToken = p.parseBlockBody()
 	return stmt
 }
 
-func (p *Parser) parseBlockBody() *RootNode {
+func (p *Parser) parseBlockBody() (*RootNode, Token) {
 	body := &RootNode{}
 	body.Statements = []Statement{}
 	p.nextToken()
@@ -227,6 +231,7 @@ func (p *Parser) parseBlockBody() *RootNode {
 		if stmt != nil {
 			body.Statements = append(body.Statements, stmt)
 		}
+
 		if p.curTokenIs(COMMA) {
 			p.lintErrors = append(p.lintErrors, LintError{
 				Line:      p.curToken.Line,
@@ -240,7 +245,8 @@ func (p *Parser) parseBlockBody() *RootNode {
 			p.nextToken()
 		}
 	}
-	return body
+	endToken := p.curToken
+	return body, endToken
 }
 
 func (p *Parser) parseVarStatement(leading []*Comment) *VarStatement {
@@ -254,6 +260,7 @@ func (p *Parser) parseVarStatement(leading []*Comment) *VarStatement {
 	}
 	p.nextToken()
 	stmt.Value = p.parseExpression(LOWEST)
+	stmt.EndToken = stmt.Value.End()
 	return stmt
 }
 
@@ -263,6 +270,7 @@ func (p *Parser) parseImportStatement(leading []*Comment) *ImportStatement {
 		return nil
 	}
 	stmt.Path = p.parseStringLiteral().(*StringLiteral)
+	stmt.EndToken = stmt.Path.End()
 	return stmt
 }
 
@@ -332,13 +340,17 @@ func (p *Parser) parseDurationLiteral() Expression {
 func (p *Parser) parseListLiteral() Expression {
 	list := &ListLiteral{Token: p.curToken}
 	p.nextToken()
-	list.Elements, list.HasTrailingComma = p.parseExpressionList(RBRACK)
+	list.Elements, list.HasTrailingComma, list.TrailingCommaToken = p.parseExpressionList(RBRACK)
+	if !p.curTokenIs(RBRACK) {
+		p.expectPeek(RBRACK)
+	}
+	list.EndToken = p.curToken
 	return list
 }
 
 func (p *Parser) parseBlockLiteral() Expression {
 	block := &BlockLiteral{Token: p.curToken}
-	block.Body = p.parseBlockBody()
+	block.Body, block.EndToken = p.parseBlockBody()
 	return block
 }
 
@@ -350,6 +362,7 @@ func (p *Parser) parseMapLiteral() Expression {
 	if p.peekTokenIs(DASH_RBRACE) {
 		p.nextToken() // Consume DASH_LBRACE
 		p.nextToken() // Consume DASH_RBRACE
+		lit.EndToken = p.curToken
 		return lit
 	}
 
@@ -380,7 +393,7 @@ func (p *Parser) parseMapLiteral() Expression {
 		}
 		p.nextToken() // Consume comma
 	}
-
+	lit.EndToken = p.curToken
 	return lit
 }
 
@@ -393,6 +406,7 @@ func (p *Parser) parseVarExpression() Expression {
 	if !p.expectPeek(RBRACE) {
 		return nil
 	}
+	expr.EndToken = p.curToken
 	return expr
 }
 
@@ -419,29 +433,38 @@ func (p *Parser) parseEnvExpression() Expression {
 	if !p.expectPeek(RPAREN) {
 		return nil
 	}
+	expr.EndToken = p.curToken
 	return expr
 }
 
-func (p *Parser) parseExpressionList(end TokenType) ([]Expression, bool) {
+func (p *Parser) parseExpressionList(end TokenType) ([]Expression, bool, Token) {
 	var list []Expression
+	var trailingComma Token
 	hasTrailingComma := false
+
 	if p.curTokenIs(end) {
-		return list, hasTrailingComma
+		return list, hasTrailingComma, trailingComma
 	}
+
 	list = append(list, p.parseExpression(LOWEST))
+
 	for p.peekTokenIs(COMMA) {
-		p.nextToken()
-		p.nextToken()
+		p.nextToken() // cur is now on comma
+		commaToken := p.curToken
+		p.nextToken() // cur is now on what's after comma
+
 		if p.curTokenIs(end) {
 			hasTrailingComma = true
-			break
+			trailingComma = commaToken
+			return list, hasTrailingComma, trailingComma
 		}
+
 		list = append(list, p.parseExpression(LOWEST))
 	}
-	if !p.curTokenIs(end) {
-		p.expectPeek(end)
-	}
-	return list, hasTrailingComma
+
+	p.nextToken()
+
+	return list, hasTrailingComma, trailingComma
 }
 
 func (p *Parser) curTokenIs(t TokenType) bool {
