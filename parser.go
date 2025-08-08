@@ -41,6 +41,7 @@ const (
 	ErrRedundantComma
 	ErrRedundantLabel
 	ErrUnusedVariable
+	ErrExpectDiffToken
 )
 
 type LintError struct {
@@ -340,8 +341,8 @@ func (p *Parser) parseBlockOrMapLiteral() Expression {
 
 func (p *Parser) parseMapLiteral() Expression {
 	mapLit := &MapLiteral{Token: p.curToken} // cur is {
-	p.nextToken()                           // consume {, cur is [
-	p.nextToken()                           // consume [, cur is first element
+	p.nextToken()                            // consume {, cur is [
+	p.nextToken()                            // consume [, cur is first element
 
 	mapLit.Elements = p.parseMapElementList()
 	if mapLit.Elements == nil {
