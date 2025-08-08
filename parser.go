@@ -384,7 +384,7 @@ func (p *Parser) parseMapElementList() []Statement {
 
 	if !p.curTokenIs(RBRACK) {
 		// 改进错误提示: 本应是逗号或 RBRACK, 但都不是, 说明缺少逗号
-		msg := fmt.Sprintf("missing comma before %s", p.curToken.Type)
+		msg := fmt.Sprintf("missing ',' before %s", p.curToken.Type)
 		p.errors = append(p.errors, LintError{
 			Line:      p.curToken.Line,
 			Column:    p.curToken.Column,
@@ -465,7 +465,7 @@ func (p *Parser) parseExpressionList(end TokenType) []Expression {
 			p.nextToken()
 		} else {
 			p.nextToken() // Move to the offending token to report error on it
-			msg := fmt.Sprintf("missing comma before %s", p.curToken.Type)
+			msg := fmt.Sprintf("missing ',' before %s", p.curToken.Type)
 			p.errors = append(p.errors, LintError{
 				Line:      p.curToken.Line,
 				Column:    p.curToken.Column,

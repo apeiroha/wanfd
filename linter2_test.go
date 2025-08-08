@@ -161,7 +161,7 @@ list = [
 	"a"
 	"b"
 ]`,
-			wantErrors: []string{"line 4:2: missing comma before STRING"},
+			wantErrors: []string{"line 4:2: missing ',' before STRING"},
 		},
 		{
 			name: "parser error with correct location in map",
@@ -170,7 +170,7 @@ dashMap = {[
 	key1 = "value1"
 	key2 = "value2"
 ]}`,
-			wantErrors: []string{"line 4:2: missing comma before IDENT"},
+			wantErrors: []string{"line 4:2: missing ',' before IDENT"},
 		},
 	}
 
