@@ -62,7 +62,7 @@ func (p *RootNode) String() string {
 	buf := bufferPool.Get().(*bytes.Buffer)
 	defer bufferPool.Put(buf)
 	buf.Reset()
-	p.Format(buf, "", FormatOptions{Style: StyleDefault, EmptyLines: true})
+	p.Format(buf, "", FormatOptions{Style: StyleBlockSorted, EmptyLines: true})
 	return buf.String()
 }
 
@@ -112,7 +112,7 @@ func (as *AssignStatement) String() string {
 	buf := bufferPool.Get().(*bytes.Buffer)
 	defer bufferPool.Put(buf)
 	buf.Reset()
-	as.Format(buf, "", FormatOptions{Style: StyleDefault, EmptyLines: true})
+	as.Format(buf, "", FormatOptions{Style: StyleBlockSorted, EmptyLines: true})
 	return buf.String()
 }
 func (as *AssignStatement) Format(w *bytes.Buffer, indent string, opts FormatOptions) {
@@ -151,7 +151,7 @@ func (bs *BlockStatement) String() string {
 	buf := bufferPool.Get().(*bytes.Buffer)
 	defer bufferPool.Put(buf)
 	buf.Reset()
-	bs.Format(buf, "", FormatOptions{Style: StyleDefault, EmptyLines: true})
+	bs.Format(buf, "", FormatOptions{Style: StyleBlockSorted, EmptyLines: true})
 	return buf.String()
 }
 func (bs *BlockStatement) Format(w *bytes.Buffer, indent string, opts FormatOptions) {
@@ -198,7 +198,7 @@ func (vs *VarStatement) String() string {
 	buf := bufferPool.Get().(*bytes.Buffer)
 	defer bufferPool.Put(buf)
 	buf.Reset()
-	vs.Format(buf, "", FormatOptions{Style: StyleDefault, EmptyLines: true})
+	vs.Format(buf, "", FormatOptions{Style: StyleBlockSorted, EmptyLines: true})
 	return buf.String()
 }
 func (vs *VarStatement) Format(w *bytes.Buffer, indent string, opts FormatOptions) {
@@ -237,7 +237,7 @@ func (is *ImportStatement) String() string {
 	buf := bufferPool.Get().(*bytes.Buffer)
 	defer bufferPool.Put(buf)
 	buf.Reset()
-	is.Format(buf, "", FormatOptions{Style: StyleDefault, EmptyLines: true})
+	is.Format(buf, "", FormatOptions{Style: StyleBlockSorted, EmptyLines: true})
 	return buf.String()
 }
 func (is *ImportStatement) Format(w *bytes.Buffer, indent string, opts FormatOptions) {
@@ -369,7 +369,7 @@ func (ll *ListLiteral) String() string {
 	buf := bufferPool.Get().(*bytes.Buffer)
 	defer bufferPool.Put(buf)
 	buf.Reset()
-	ll.Format(buf, "", FormatOptions{Style: StyleDefault, EmptyLines: true})
+	ll.Format(buf, "", FormatOptions{Style: StyleBlockSorted, EmptyLines: true})
 	return buf.String()
 }
 func (ll *ListLiteral) Format(w *bytes.Buffer, indent string, opts FormatOptions) {
@@ -408,7 +408,7 @@ func (bl *BlockLiteral) String() string {
 	buf := bufferPool.Get().(*bytes.Buffer)
 	defer bufferPool.Put(buf)
 	buf.Reset()
-	bl.Format(buf, "", FormatOptions{Style: StyleDefault, EmptyLines: true})
+	bl.Format(buf, "", FormatOptions{Style: StyleBlockSorted, EmptyLines: true})
 	return buf.String()
 }
 func (bl *BlockLiteral) Format(w *bytes.Buffer, indent string, opts FormatOptions) {
@@ -449,7 +449,7 @@ func (ee *EnvExpression) String() string {
 	buf := bufferPool.Get().(*bytes.Buffer)
 	defer bufferPool.Put(buf)
 	buf.Reset()
-	ee.Format(buf, "", FormatOptions{Style: StyleDefault, EmptyLines: true})
+	ee.Format(buf, "", FormatOptions{Style: StyleBlockSorted, EmptyLines: true})
 	return buf.String()
 }
 func (ee *EnvExpression) Format(w *bytes.Buffer, indent string, opts FormatOptions) {
@@ -460,4 +460,45 @@ func (ee *EnvExpression) Format(w *bytes.Buffer, indent string, opts FormatOptio
 		ee.DefaultValue.Format(w, indent, opts)
 	}
 	w.WriteString(")")
+}
+
+// MapLiteral 表示一个映射字面量, 例如 `{[ key = "value" ]}`.
+type MapLiteral struct {
+	Token    Token // The LBRACE token
+	Elements []Statement
+}
+
+func (ml *MapLiteral) expressionNode()      {}
+func (ml *MapLiteral) TokenLiteral() string { return string(ml.Token.Literal) }
+func (ml *MapLiteral) String() string {
+	buf := bufferPool.Get().(*bytes.Buffer)
+	defer bufferPool.Put(buf)
+	buf.Reset()
+	ml.Format(buf, "", FormatOptions{Style: StyleBlockSorted, EmptyLines: true})
+	return buf.String()
+}
+func (ml *MapLiteral) Format(w *bytes.Buffer, indent string, opts FormatOptions) {
+	if opts.Style == StyleSingleLine {
+		w.WriteString("{[")
+		for i, st := range ml.Elements {
+			if i > 0 {
+				w.WriteString(",")
+			}
+			st.(*AssignStatement).Name.Format(w, "", opts)
+			w.WriteString("=")
+			st.(*AssignStatement).Value.Format(w, "", opts)
+		}
+		w.WriteString("]}")
+	} else {
+		w.WriteString("{[\n")
+		newIndent := indent + "\t"
+		for i, st := range ml.Elements {
+			if i > 0 {
+				w.WriteString(",\n")
+			}
+			w.WriteString(newIndent)
+			st.Format(w, newIndent, opts)
+		}
+		w.WriteString("\n" + indent + "]}")
+	}
 }

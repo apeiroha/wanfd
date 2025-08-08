@@ -32,19 +32,54 @@ func TestEncoder_Styles(t *testing.T) {
 		want    string
 	}{
 		{
-			"Default (StyleDefault)",
+			"Default (StyleBlockSorted)",
 			[]EncoderOption{},
-			"c_kv = \"c\"\n\na_block {\n\ta_sub_kv = \"a\"\n\tb_sub_kv = \"b\"\n}\n\nb_kv = 123\n\nd_map {\n\ty_key = \"y\"\n\tz_key = \"z\"\n}\n",
+			`c_kv = "c"
+
+a_block {
+	a_sub_kv = "a"
+	b_sub_kv = "b"
+}
+
+b_kv = 123
+d_map = {[
+	y_key = "y",
+	z_key = "z",
+]}`,
+		},
+		{
+			"StyleAllSorted",
+			[]EncoderOption{WithStyle(StyleAllSorted)},
+			`b_kv = 123
+c_kv = "c"
+d_map = {[
+	y_key = "y",
+	z_key = "z",
+]}
+
+a_block {
+	a_sub_kv = "a"
+	b_sub_kv = "b"
+}`,
 		},
 		{
 			"StyleStreaming",
 			[]EncoderOption{WithStyle(StyleStreaming)},
-			"c_kv = \"c\"\na_block {\n\tb_sub_kv = \"b\"\n\ta_sub_kv = \"a\"\n}\nb_kv = 123\nd_map {\n\ty_key = \"y\"\n\tz_key = \"z\"\n}\n",
+			`c_kv = "c"
+a_block {
+	b_sub_kv = "b"
+	a_sub_kv = "a"
+}
+b_kv = 123
+d_map = {[
+	y_key = "y",
+	z_key = "z",
+]}`,
 		},
 		{
 			"StyleSingleLine",
 			[]EncoderOption{WithStyle(StyleSingleLine)},
-			"c_kv=\"c\";a_block{b_sub_kv=\"b\";a_sub_kv=\"a\"};b_kv=123;d_map{y_key=\"y\";z_key=\"z\"}",
+			`c_kv="c";a_block{b_sub_kv="b";a_sub_kv="a"};b_kv=123;d_map={[y_key="y",z_key="z"]}`,
 		},
 	}
 
@@ -55,7 +90,8 @@ func TestEncoder_Styles(t *testing.T) {
 			if err := encoder.Encode(testData); err != nil {
 				t.Fatalf("Encode() with style %v failed: %v", tt.name, err)
 			}
-			if got := buf.String(); got != tt.want {
+			got := strings.TrimSuffix(buf.String(), "\n")
+			if got != tt.want {
 				t.Errorf("Encode() with style %v got:\n%q\nWant:\n%q", tt.name, got, tt.want)
 			}
 
@@ -151,4 +187,103 @@ func TestFieldMatching_Fallback(t *testing.T) {
 	if !reflect.DeepEqual(decodedCfg, expected) {
 		t.Errorf("Fallback decoding failed. Got %+v, want %+v", decodedCfg, expected)
 	}
+}
+
+func TestMapAndListStyles(t *testing.T) {
+	type Nested struct {
+		Val int `wanf:"val"`
+	}
+	type Config struct {
+		StrMap   map[string]string   `wanf:"str_map"`
+		Set      map[string]struct{} `wanf:"set"`
+		ObjMap   map[string]Nested   `wanf:"obj_map"`
+		StrList  []string            `wanf:"str_list"`
+		EmptyMap map[string]string   `wanf:"empty_map"`
+	}
+
+	cfg := Config{
+		StrMap: map[string]string{"b": "B", "a": "A"},
+		Set: map[string]struct{}{
+			"z": {},
+			"y": {},
+		},
+		ObjMap: map[string]Nested{
+			"n2": {Val: 2},
+			"n1": {Val: 1},
+		},
+		StrList:  []string{"c", "d"},
+		EmptyMap: make(map[string]string),
+	}
+
+	// Note: for StyleSingleLine, blocks inside maps are not sorted due to implementation simplicity.
+	// This is acceptable as single line is for machines, not humans.
+	expectedOutputs := map[string]string{
+		"StyleBlockSorted": `str_map = {[
+	a = "A",
+	b = "B",
+]}
+set = {[
+	y = {},
+	z = {},
+]}
+obj_map = {[
+	n1 = {
+		val = 1
+	},
+	n2 = {
+		val = 2
+	},
+]}
+str_list = [
+	"c",
+	"d",
+]`,
+		"StyleSingleLine": `str_map={[a="A",b="B"]};set={[y={},z={}]};obj_map={[n1={val=1},n2={val=2}]};str_list=["c","d"]`,
+	}
+
+	// Test Block Sorted (Default)
+	t.Run("StyleBlockSorted", func(t *testing.T) {
+		var buf bytes.Buffer
+		enc := NewEncoder(&buf, WithStyle(StyleBlockSorted))
+		if err := enc.Encode(cfg); err != nil {
+			t.Fatalf("Encode failed: %v", err)
+		}
+		// Trim trailing newline for comparison
+		got := strings.TrimSuffix(buf.String(), "\n")
+		want := expectedOutputs["StyleBlockSorted"]
+		if got != want {
+			t.Errorf("got:\n%s\n\nwant:\n%s", got, want)
+		}
+
+		// Round-trip
+		var decodedCfg Config
+		if err := Decode(buf.Bytes(), &decodedCfg); err != nil {
+			t.Fatalf("Decode round-trip failed: %v", err)
+		}
+		if !reflect.DeepEqual(cfg.Set, decodedCfg.Set) || !reflect.DeepEqual(cfg.StrMap, decodedCfg.StrMap) {
+			t.Errorf("Round-trip failed. Got %+v, want %+v", decodedCfg, cfg)
+		}
+	})
+
+	// Test Single Line
+	t.Run("StyleSingleLine", func(t *testing.T) {
+		var buf bytes.Buffer
+		enc := NewEncoder(&buf, WithStyle(StyleSingleLine))
+		if err := enc.Encode(cfg); err != nil {
+			t.Fatalf("Encode failed: %v", err)
+		}
+		got := buf.String()
+		want := expectedOutputs["StyleSingleLine"]
+		if got != want {
+			t.Errorf("got:\n%s\n\nwant:\n%s", got, want)
+		}
+		// Round-trip
+		var decodedCfg Config
+		if err := Decode(buf.Bytes(), &decodedCfg); err != nil {
+			t.Fatalf("Decode round-trip failed: %v", err)
+		}
+		if !reflect.DeepEqual(cfg.Set, decodedCfg.Set) || !reflect.DeepEqual(cfg.StrMap, decodedCfg.StrMap) {
+			t.Errorf("Round-trip failed. Got %+v, want %+v", decodedCfg, cfg)
+		}
+	})
 }

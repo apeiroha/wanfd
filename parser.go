@@ -82,7 +82,7 @@ func NewParser(l *Lexer) *Parser {
 	p.registerPrefix(BOOL, p.parseBooleanLiteral)
 	p.registerPrefix(DUR, p.parseDurationLiteral)
 	p.registerPrefix(LBRACK, p.parseListLiteral)
-	p.registerPrefix(LBRACE, p.parseBlockLiteral)
+	p.registerPrefix(LBRACE, p.parseBlockOrMapLiteral)
 	p.registerPrefix(DOLLAR_LBRACE, p.parseVarExpression)
 	p.nextToken()
 	p.nextToken()
@@ -332,6 +332,63 @@ func (p *Parser) parseListLiteral() Expression {
 	p.nextToken()
 	list.Elements = p.parseExpressionList(RBRACK)
 	return list
+}
+
+func (p *Parser) parseBlockOrMapLiteral() Expression {
+	if p.peekTokenIs(LBRACK) {
+		return p.parseMapLiteral()
+	}
+	return p.parseBlockLiteral()
+}
+
+func (p *Parser) parseMapLiteral() Expression {
+	mapLit := &MapLiteral{Token: p.curToken} // cur is {
+	p.nextToken()                           // consume {, cur is [
+	p.nextToken()                           // consume [, cur is first element
+
+	mapLit.Elements = p.parseMapElementList()
+	if mapLit.Elements == nil {
+		return nil
+	}
+
+	// after parseMapElementList, curToken is RBRACK
+	if !p.expectPeek(RBRACE) {
+		return nil
+	}
+	return mapLit
+}
+
+func (p *Parser) parseMapElementList() []Statement {
+	var elements []Statement
+
+	if p.curTokenIs(RBRACK) {
+		return elements
+	}
+
+	stmt := p.parseStatement()
+	if stmt == nil {
+		return nil
+	}
+	elements = append(elements, stmt)
+
+	for p.curTokenIs(COMMA) {
+		p.nextToken()
+		if p.curTokenIs(RBRACK) { // trailing comma
+			break
+		}
+		stmt := p.parseStatement()
+		if stmt == nil {
+			return nil
+		}
+		elements = append(elements, stmt)
+	}
+
+	if !p.curTokenIs(RBRACK) {
+		p.peekError(RBRACK)
+		return nil
+	}
+
+	return elements
 }
 
 func (p *Parser) parseBlockLiteral() Expression {

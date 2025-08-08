@@ -84,7 +84,7 @@ server "a" {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			if tc.opts.Style == 0 && !tc.opts.EmptyLines {
-				tc.opts.Style = StyleDefault
+				tc.opts.Style = StyleBlockSorted
 				tc.opts.EmptyLines = true
 			}
 			program, errs := Lint([]byte(tc.input))

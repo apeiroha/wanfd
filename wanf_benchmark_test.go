@@ -46,6 +46,6 @@ func BenchmarkFormat(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		program, _ := Lint(benchmarkWanfData)
-		Format(program, FormatOptions{Style: StyleDefault, EmptyLines: true})
+		Format(program, FormatOptions{Style: StyleBlockSorted, EmptyLines: true})
 	}
 }

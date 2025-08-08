@@ -4,17 +4,26 @@ package wanf
 type OutputStyle int
 
 const (
-	// StyleDefault is the default, block-sorted style.
-	// It adds empty lines between blocks for readability.
-	StyleDefault OutputStyle = iota
-	// StyleStreaming mimics the input order as closely as possible.
+	// StyleBlockSorted is the default style. It sorts fields within nested blocks
+	// but preserves the top-level order from the struct definition.
+	// It uses indentation and empty lines for readability.
+	StyleBlockSorted OutputStyle = iota
+
+	// StyleAllSorted sorts all fields at all levels alphabetically,
+	// ensuring a canonical, deterministic output. KVs are placed before blocks.
+	StyleAllSorted
+
+	// StyleStreaming outputs fields in the exact order they are defined in the struct,
+	// without any sorting. It's fast but not deterministic if map keys change order.
 	StyleStreaming
-	// StyleSingleLine outputs the entire file on a single line.
+
+	// StyleSingleLine outputs the entire configuration on a single line,
+	// using semicolons as separators. This is the most compact format.
 	StyleSingleLine
 )
 
 // FormatOptions provides options for controlling the formatter's output.
 type FormatOptions struct {
 	Style      OutputStyle
-	EmptyLines bool
+	EmptyLines bool // If true, adds empty lines between blocks in supported styles.
 }
