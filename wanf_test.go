@@ -237,7 +237,7 @@ list = [
 ] // line 7
 `
 	// Manually inject the trailing comma to test the linter
-	// The trailing comma is at line 6, column 11
+	// The trailing comma is at line 6, column 13
 	inputWithComma := strings.Replace(input, "\"item2\"", "\"item2\",", 1)
 
 	_, errs := Lint([]byte(inputWithComma))
@@ -251,15 +251,15 @@ list = [
 		t.Errorf("Expected error type %v, got %v", ErrRedundantTrailingComma, err.Type)
 	}
 
-	// The input has the comma at line 6, column 12
+	// The input has the comma at line 6, column 13
 	// Note: lines are 1-based.
 	wantLine := 6
-	wantCol := 12
+	wantCol := 13
 	if err.Line != wantLine || err.Column != wantCol {
 		t.Errorf("Error position mismatch: want L%d:C%d, got L%d:C%d", wantLine, wantCol, err.Line, err.Column)
 	}
 
-	// Check end position
+	// Check end position. The comma itself is one character wide.
 	if err.EndLine != wantLine || err.EndColumn != wantCol+1 {
 		t.Errorf("Error end position mismatch: want L%d:C%d, got L%d:C%d", wantLine, wantCol+1, err.EndLine, err.EndColumn)
 	}

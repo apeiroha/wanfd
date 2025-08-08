@@ -156,7 +156,7 @@ func (l *Lexer) skipWhitespace() {
 	for l.ch == ' ' || l.ch == '\t' || l.ch == '\r' || l.ch == '\n' {
 		if l.ch == '\n' {
 			l.line++
-			l.column = 0
+			l.column = 1
 		}
 		l.readChar()
 	}
@@ -184,7 +184,7 @@ func (l *Lexer) readMultiLineComment() ([]byte, bool) {
 		}
 		if l.ch == '\n' {
 			l.line++
-			l.column = 0
+			l.column = 1
 		}
 		l.readChar()
 	}
