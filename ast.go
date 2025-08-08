@@ -414,18 +414,17 @@ func (ll *ListLiteral) Format(w *bytes.Buffer, indent string, opts FormatOptions
 			el.Format(w, "", opts)
 		}
 		w.WriteString("]")
-	} else {
-		w.WriteString("[\n")
-		newIndent := indent + "\t"
-		for i, el := range ll.Elements {
-			if i > 0 {
-				w.WriteString(",\n")
-			}
-			w.WriteString(newIndent)
-			el.Format(w, newIndent, opts)
-		}
-		w.WriteString("\n" + indent + "]")
+		return
 	}
+
+	w.WriteString("[\n")
+	newIndent := indent + "\t"
+	for _, el := range ll.Elements {
+		w.WriteString(newIndent)
+		el.Format(w, newIndent, opts)
+		w.WriteString(",\n")
+	}
+	w.WriteString(indent + "]")
 }
 
 // BlockLiteral 表示一个匿名的块, 通常用作值, 例如在列表中.
@@ -510,6 +509,13 @@ func (ml *MapLiteral) String() string {
 	return buf.String()
 }
 func (ml *MapLiteral) Format(w *bytes.Buffer, indent string, opts FormatOptions) {
+	// Sort elements by key for deterministic output.
+	sort.SliceStable(ml.Elements, func(i, j int) bool {
+		iName := ml.Elements[i].(*AssignStatement).Name.Value
+		jName := ml.Elements[j].(*AssignStatement).Name.Value
+		return iName < jName
+	})
+
 	if opts.Style == StyleSingleLine {
 		w.WriteString("{[")
 		for i, st := range ml.Elements {
@@ -524,13 +530,10 @@ func (ml *MapLiteral) Format(w *bytes.Buffer, indent string, opts FormatOptions)
 	} else {
 		w.WriteString("{[\n")
 		newIndent := indent + "\t"
-		for i, st := range ml.Elements {
-			if i > 0 {
-				w.WriteString(",\n")
-			}
+		for _, st := range ml.Elements {
 			st.Format(w, newIndent, opts)
-			w.WriteString(",")
+			w.WriteString(",\n")
 		}
-		w.WriteString("\n" + indent + "]}")
+		w.WriteString(indent + "]}")
 	}
 }

@@ -105,6 +105,41 @@ b_map = {[
 	key = "val",
 ]}`,
 		},
+		{
+			name: "fmt map and list newlines",
+			input: `
+c_list = [3, 1, 2]
+a_map = {[
+    z = 1,
+    a = 2,
+]}
+b_block {
+    nested_list = [ "c", "a" ]
+    nested_map = {[ b=2, a=1 ]}
+}
+`,
+			wantOutput: `c_list = [
+	3,
+	1,
+	2,
+]
+
+a_map = {[
+	a = 2,
+	z = 1,
+]}
+
+b_block {
+	nested_list = [
+		"c",
+		"a",
+	]
+	nested_map = {[
+		a = 1,
+		b = 2,
+	]}
+}`,
+		},
 	}
 
 	for _, tc := range testCases {
