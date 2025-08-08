@@ -42,6 +42,7 @@ a_block {
 }
 
 b_kv = 123
+
 d_map = {[
 	y_key = "y",
 	z_key = "z",
@@ -52,6 +53,7 @@ d_map = {[
 			[]EncoderOption{WithStyle(StyleAllSorted)},
 			`b_kv = 123
 c_kv = "c"
+
 d_map = {[
 	y_key = "y",
 	z_key = "z",
@@ -222,10 +224,12 @@ func TestMapAndListStyles(t *testing.T) {
 	a = "A",
 	b = "B",
 ]}
+
 set = {[
 	y = {},
 	z = {},
 ]}
+
 obj_map = {[
 	n1 = {
 		val = 1
@@ -234,6 +238,7 @@ obj_map = {[
 		val = 2
 	},
 ]}
+
 str_list = [
 	"c",
 	"d",

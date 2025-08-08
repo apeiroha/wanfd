@@ -100,19 +100,21 @@ type internalEncoder struct {
 }
 
 type fieldInfo struct {
-	name      string
-	value     reflect.Value
-	tag       wanfTag
-	fieldType reflect.StructField
-	isBlock   bool
+	name        string
+	value       reflect.Value
+	tag         wanfTag
+	fieldType   reflect.StructField
+	isBlock     bool
+	isBlockLike bool // for formatting
 }
 
 type cachedField struct {
-	name      string
-	tag       wanfTag
-	fieldType reflect.StructField
-	isBlock   bool
-	index     int
+	name        string
+	tag         wanfTag
+	fieldType   reflect.StructField
+	isBlock     bool
+	isBlockLike bool
+	index       int
 }
 
 func (e *internalEncoder) encodeStruct(v reflect.Value, depth int) error {
@@ -141,11 +143,11 @@ func (e *internalEncoder) encodeStruct(v reflect.Value, depth int) error {
 		// StyleStreaming does no sorting, preserving the struct definition order.
 	}
 
-	var prevWasBlock bool
+	var prevWasBlockLike bool
 	for i, f := range fields {
-		e.writeSeparator(i > 0, f.isBlock, prevWasBlock)
+		e.writeSeparator(i > 0, f.isBlockLike, prevWasBlockLike)
 		e.encodeField(f, depth)
-		prevWasBlock = f.isBlock
+		prevWasBlockLike = f.isBlockLike
 	}
 	return nil
 }
@@ -309,7 +311,7 @@ func (e *internalEncoder) writeSpace() {
 		e.buf.WriteString(" ")
 	}
 }
-func (e *internalEncoder) writeSeparator(isNotFirst, isCurrentBlock, isPrevBlock bool) {
+func (e *internalEncoder) writeSeparator(isNotFirst, isCurrentBlockLike, isPrevBlockLike bool) {
 	if !isNotFirst {
 		return
 	}
@@ -320,7 +322,7 @@ func (e *internalEncoder) writeSeparator(isNotFirst, isCurrentBlock, isPrevBlock
 	e.writeNewLine()
 	// 在StyleBlockSorted或StyleAllSorted模式下, 且启用了空行时, 在块之间添加空行
 	// In StyleBlockSorted or StyleAllSorted mode, when empty lines are enabled, add an empty line between blocks.
-	if (e.opts.Style == StyleBlockSorted || e.opts.Style == StyleAllSorted) && e.opts.EmptyLines && (isCurrentBlock || isPrevBlock) {
+	if (e.opts.Style == StyleBlockSorted || e.opts.Style == StyleAllSorted) && e.opts.EmptyLines && (isCurrentBlockLike || isPrevBlockLike) {
 		e.writeNewLine()
 	}
 }
@@ -347,11 +349,12 @@ func (e *internalEncoder) gatherFields(v reflect.Value) []fieldInfo {
 			continue
 		}
 		fields = append(fields, fieldInfo{
-			name:      cf.name,
-			value:     fieldVal,
-			tag:       cf.tag,
-			fieldType: cf.fieldType,
-			isBlock:   cf.isBlock,
+			name:        cf.name,
+			value:       fieldVal,
+			tag:         cf.tag,
+			fieldType:   cf.fieldType,
+			isBlock:     cf.isBlock,
+			isBlockLike: cf.isBlockLike,
 		})
 	}
 	return fields
@@ -366,12 +369,19 @@ func cacheStructInfo(t reflect.Type) []cachedField {
 		}
 		tagStr := fieldType.Tag.Get("wanf")
 		tagInfo := parseWanfTag(tagStr, fieldType.Name)
+		ft := fieldType.Type
+		if ft.Kind() == reflect.Ptr {
+			ft = ft.Elem()
+		}
+		isBlock := isBlockType(ft, tagInfo)
+		isBlockLike := isBlock || ft.Kind() == reflect.Map || ft.Kind() == reflect.Slice
 		cachedFields = append(cachedFields, cachedField{
-			name:      tagInfo.Name,
-			tag:       tagInfo,
-			fieldType: fieldType,
-			isBlock:   isBlockType(fieldType.Type, tagInfo),
-			index:     i,
+			name:        tagInfo.Name,
+			tag:         tagInfo,
+			fieldType:   fieldType,
+			isBlock:     isBlock,
+			isBlockLike: isBlockLike,
+			index:       i,
 		})
 	}
 	return cachedFields

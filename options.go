@@ -22,6 +22,11 @@ const (
 	StyleSingleLine
 )
 
+const (
+	// StyleDefault is an alias for StyleBlockSorted for backward compatibility.
+	StyleDefault = StyleBlockSorted
+)
+
 // FormatOptions provides options for controlling the formatter's output.
 type FormatOptions struct {
 	Style      OutputStyle

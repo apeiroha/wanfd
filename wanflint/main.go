@@ -183,7 +183,7 @@ func formatFile(path string, style string) error {
 		opts.Style = wanf.StyleSingleLine
 		opts.EmptyLines = false
 	default:
-		opts.Style = wanf.StyleDefault
+		opts.Style = wanf.StyleBlockSorted
 	}
 
 	formatted := wanf.Format(program, opts)
