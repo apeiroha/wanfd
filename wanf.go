@@ -183,9 +183,15 @@ func (a *astAnalyzer) check(node Node) Node {
 		return n
 	case *ListLiteral:
 		if n.HasTrailingComma {
+			// The trailing comma is the token just before the EndToken.
+			// This is an approximation, but better than nothing.
+			// A more precise approach would require storing the comma token itself.
+			endToken := n.EndToken
 			err := LintError{
-				Line:      n.Token.Line,
-				Column:    n.Token.Column,
+				Line:      endToken.Line,
+				Column:    endToken.Column - 1, // Approximate column of the comma
+				EndLine:   endToken.Line,
+				EndColumn: endToken.Column,
 				Message:   "redundant trailing comma in list literal",
 				Level:     ErrorLevelLint,
 				Type:      ErrRedundantTrailingComma,

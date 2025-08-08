@@ -332,7 +332,7 @@ func (p *Parser) parseDurationLiteral() Expression {
 func (p *Parser) parseListLiteral() Expression {
 	list := &ListLiteral{Token: p.curToken}
 	p.nextToken()
-	list.Elements, list.HasTrailingComma = p.parseExpressionList(RBRACK)
+	list.Elements, list.HasTrailingComma, list.EndToken = p.parseExpressionList(RBRACK)
 	return list
 }
 
@@ -367,6 +367,8 @@ func (p *Parser) parseMapLiteral() Expression {
 			p.lintErrors = append(p.lintErrors, LintError{
 				Line:      p.curToken.Line,
 				Column:    p.curToken.Column,
+				EndLine:   p.curToken.Line,
+				EndColumn: p.curToken.Column + len(p.curToken.Literal),
 				Message:   "missing trailing comma before ']}'",
 				Level:     ErrorLevelFmt,
 				Type:      ErrMissingTrailingComma,
@@ -422,11 +424,11 @@ func (p *Parser) parseEnvExpression() Expression {
 	return expr
 }
 
-func (p *Parser) parseExpressionList(end TokenType) ([]Expression, bool) {
+func (p *Parser) parseExpressionList(end TokenType) ([]Expression, bool, Token) {
 	var list []Expression
 	hasTrailingComma := false
 	if p.curTokenIs(end) {
-		return list, hasTrailingComma
+		return list, hasTrailingComma, p.curToken
 	}
 	list = append(list, p.parseExpression(LOWEST))
 	for p.peekTokenIs(COMMA) {
@@ -441,7 +443,7 @@ func (p *Parser) parseExpressionList(end TokenType) ([]Expression, bool) {
 	if !p.curTokenIs(end) {
 		p.expectPeek(end)
 	}
-	return list, hasTrailingComma
+	return list, hasTrailingComma, p.curToken
 }
 
 func (p *Parser) curTokenIs(t TokenType) bool {

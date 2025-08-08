@@ -366,9 +366,10 @@ func (dl *DurationLiteral) Format(w *bytes.Buffer, indent string, opts FormatOpt
 
 // ListLiteral 表示一个列表, 如 `[el1, el2]`.
 type ListLiteral struct {
-	Token            Token
+	Token            Token // The '[' token
 	Elements         []Expression
 	HasTrailingComma bool
+	EndToken         Token // The ']' token
 }
 
 func (ll *ListLiteral) expressionNode()      {}
