@@ -35,8 +35,8 @@ server {
 }`,
 			wantOutput: `
 server {
-	port = 8080
 	host = "0.0.0.0"
+	port = 8080
 }`,
 			wantErrors: []string{"redundant comma"},
 		},
@@ -78,6 +78,32 @@ server "a" {
 			input:      `a = 1 /* comment`,
 			wantOutput: `a = 1`,
 			wantErrors: []string{"unclosed block comment"},
+		},
+		{
+			name: "fmt sorting and newlines",
+			input: `
+c_kv = 1
+a_block {
+	z_sub = 1
+	a_sub = 2
+}
+b_map = {[
+	key = "val"
+]}
+`,
+			// Note: b_map and c_kv are sorted first, then a_block.
+			// Empty lines are added between them because they are top-level.
+			// Inside a_block, fields are sorted but have no empty line.
+			wantOutput: `c_kv = 1
+
+a_block {
+	a_sub = 2
+	z_sub = 1
+}
+
+b_map = {[
+	key = "val",
+]}`,
 		},
 	}
 

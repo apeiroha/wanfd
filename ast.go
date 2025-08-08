@@ -2,6 +2,8 @@ package wanf
 
 import (
 	"bytes"
+	"reflect"
+	"sort"
 	"strings"
 	"sync"
 )
@@ -67,23 +69,53 @@ func (p *RootNode) String() string {
 }
 
 func (p *RootNode) Format(w *bytes.Buffer, indent string, opts FormatOptions) {
-	// 辅助函数, 用于判断语句类型和是否有注释
-	isBlock := func(s Statement) bool {
-		_, ok := s.(*BlockStatement)
-		return ok
-	}
-	hasComments := func(s Statement) bool {
-		return len(s.GetLeadingComments()) > 0
+	// 辅助函数, 判断语句是否应被视为空行分隔的块
+	isBlockLike := func(s Statement) bool {
+		if _, ok := s.(*BlockStatement); ok {
+			return true
+		}
+		if as, ok := s.(*AssignStatement); ok {
+			if as.Value != nil {
+				valType := reflect.TypeOf(as.Value)
+				if valType == reflect.TypeOf(&MapLiteral{}) || valType == reflect.TypeOf(&ListLiteral{}) {
+					return true
+				}
+			}
+		}
+		return false
 	}
 
-	for i, s := range p.Statements {
+	statements := p.Statements
+	// 排序逻辑
+	if opts.Style == StyleAllSorted || (opts.Style == StyleBlockSorted && indent != "") {
+		sort.SliceStable(statements, func(i, j int) bool {
+			iIsBlock := isBlockLike(statements[i])
+			jIsBlock := isBlockLike(statements[j])
+			if iIsBlock != jIsBlock {
+				return !iIsBlock
+			}
+			// 获取语句的名称以进行字母排序
+			getName := func(s Statement) string {
+				if as, ok := s.(*AssignStatement); ok {
+					return as.Name.Value
+				}
+				if bs, ok := s.(*BlockStatement); ok {
+					return bs.Name.Value
+				}
+				return ""
+			}
+			return getName(statements[i]) < getName(statements[j])
+		})
+	}
+
+	for i, s := range statements {
 		if i > 0 {
 			if opts.Style == StyleSingleLine {
-				w.WriteString("; ")
+				w.WriteString(";")
 			} else {
 				w.WriteString("\n")
-				// 启发式规则: 如果上一个或当前是块, 或者当前有注释, 则增加一个空行
-				if opts.EmptyLines && (isBlock(p.Statements[i-1]) || isBlock(s) || hasComments(s)) {
+				// 仅在顶级添加空行
+				if indent == "" && opts.EmptyLines && (isBlockLike(statements[i-1]) || isBlockLike(s)) {
 					w.WriteString("\n")
 				}
 			}
@@ -496,8 +528,8 @@ func (ml *MapLiteral) Format(w *bytes.Buffer, indent string, opts FormatOptions)
 			if i > 0 {
 				w.WriteString(",\n")
 			}
-			w.WriteString(newIndent)
 			st.Format(w, newIndent, opts)
+			w.WriteString(",")
 		}
 		w.WriteString("\n" + indent + "]}")
 	}
