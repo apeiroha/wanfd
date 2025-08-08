@@ -4,9 +4,11 @@ import * as util from 'util';
 
 // diagnosticCollection 用于报告 linter 的错误和警告
 let diagnosticCollection: vscode.DiagnosticCollection;
+let extensionContext: vscode.ExtensionContext;
 
 // 插件的入口点, 当插件被激活时 VS Code 会调用这个函数
 export function activate(context: vscode.ExtensionContext) {
+	extensionContext = context;
 	// 为 wanf 文件创建一个新的诊断集合
 	diagnosticCollection = vscode.languages.createDiagnosticCollection('wanf');
 	context.subscriptions.push(diagnosticCollection);
@@ -62,44 +64,31 @@ const exec = util.promisify(child_process.exec);
 
 // --- 翻译模块 ---
 
-// 定义了英文错误信息到中文模板的映射规则
-const translationRules = [
-	{
-		regex: /redundant comma; statements in a block should be separated by newlines/,
-		template: "冗余的逗号; 块中的语句应由换行符分隔."
-	},
-	{
-		regex: /block "(.+?)" is defined only once, the label "(.+?)" is redundant/,
-		template: "块 “%s” 只定义了一次, 标签 “%s” 是多余的."
-	},
-	{
-		regex: /variable "(.+?)" is declared but not used/,
-		template: "变量 “%s” 已声明但从未使用."
-	},
-	{
-		regex: /unexpected token (.+?) \((.+?)\)/,
-		template: "意外的标记 %s (%s)."
-	}
-];
+// Go linter 中的 ErrorType 枚举
+// const (
+// 	ErrUnknown ErrorType = iota (0)
+// 	ErrUnexpectedToken (1)
+// 	ErrRedundantComma (2)
+// 	ErrRedundantLabel (3)
+// 	ErrUnusedVariable (4)
+// )
+const translationMap: { [key: number]: string } = {
+	1: "意外的标记: %s (%s)",
+	2: "冗余的逗号; 块中的语句应由换行符分隔。",
+	3: "块“%s”只定义了一次, 标签“%s”是多余的。",
+	4: "变量“%s”已声明但从未使用。",
+};
 
-// 翻译单条 linter 信息
-function translateMessage(englishMessage: string): string {
-	for (const rule of translationRules) {
-		const matches = rule.regex.exec(englishMessage);
-		if (matches) {
-			// 使用 Array.prototype.slice.call(matches, 1) 来获取所有捕获组
-			let translated = rule.template;
-			const args = Array.prototype.slice.call(matches, 1);
-			for (const arg of args) {
-				translated = translated.replace('%s', arg);
-			}
-			return translated;
-		}
+function formatTranslation(template: string, args: string[] | undefined): string {
+	if (!args || args.length === 0) {
+		return template;
 	}
-	// 如果没有匹配的规则, 返回原始英文信息
-	return englishMessage;
+	let result = template;
+	for (const arg of args) {
+		result = result.replace("%s", arg);
+	}
+	return result;
 }
-
 
 async function updateDiagnostics(document: vscode.TextDocument): Promise<void> {
 	if (document.languageId !== 'wanf') {
@@ -120,17 +109,44 @@ async function updateDiagnostics(document: vscode.TextDocument): Promise<void> {
 
 		// 解析来自 stdout 的 JSON 输出
 		const issues = JSON.parse(stdout);
+		const config = vscode.workspace.getConfiguration('wanf');
+		const langSetting = config.get<string>('language');
+
+		let useChineseTranslation = false;
+		if (langSetting === 'zh-cn') {
+			useChineseTranslation = true;
+		} else if (langSetting === 'auto' && vscode.env.language.startsWith('zh')) {
+			useChineseTranslation = true;
+		}
+
+
 		if (issues) {
 			for (const issue of issues) {
-				const lineNum = issue.line - 1; // VS Code 的行号是0索引的
-				const charNum = issue.column - 1; // VS Code 的列号也是0索引的
+				const lineNum = issue.line - 1;
+				const charNum = issue.column - 1;
 				const endLineNum = issue.endLine - 1;
 				const endCharNum = issue.endColumn - 1;
-				const originalMessage = issue.message;
-				const translatedMessage = translateMessage(originalMessage); // 在这里进行翻译
-
 				const range = new vscode.Range(lineNum, charNum, endLineNum, endCharNum);
-				const diagnostic = new vscode.Diagnostic(range, translatedMessage, vscode.DiagnosticSeverity.Warning);
+
+				// 严重性由 level 决定 (0: LINT -> Error, 1: FMT -> Warning)
+				const severity = issue.level === 1
+					? vscode.DiagnosticSeverity.Warning
+					: vscode.DiagnosticSeverity.Error;
+
+				let finalMessage = issue.message;
+				if (useChineseTranslation) {
+					// 特殊处理无参数的未闭合注释错误
+					if (issue.message === "unclosed block comment") {
+						finalMessage = "未闭合的块注释。";
+					} else {
+						const template = translationMap[issue.type];
+						if (template) {
+							finalMessage = formatTranslation(template, issue.args);
+						}
+					}
+				}
+
+				const diagnostic = new vscode.Diagnostic(range, finalMessage, severity);
 				diagnostics.push(diagnostic);
 			}
 		}
@@ -142,7 +158,17 @@ async function updateDiagnostics(document: vscode.TextDocument): Promise<void> {
 		console.error(`[wanf-lint] Error linting file: ${document.fileName}`, e);
 		// 检查是否是因为 'command not found' 导致的错误
 		if (e.code === 'ENOENT' || /not found/i.test(e.message)) {
-			vscode.window.showErrorMessage('wanflint command not found. Please ensure it is installed and in your PATH.', 'error');
+			const openGuide = 'Open Install Guide';
+			vscode.window.showErrorMessage(
+				'wanflint command not found. Please ensure it is installed and in your PATH.',
+				openGuide
+			).then(selection => {
+				if (selection === openGuide) {
+					// README.md 在 vscode 插件目录的根目录中
+					const readmePath = vscode.Uri.joinPath(extensionContext.extensionUri, 'README.md');
+					vscode.commands.executeCommand('markdown.showPreview', readmePath);
+				}
+			});
 			return;
 		}
 

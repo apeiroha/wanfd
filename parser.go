@@ -15,12 +15,43 @@ type (
 	prefixParseFn func() Expression
 )
 
+type ErrorLevel int
+
+const (
+	ErrorLevelLint ErrorLevel = iota
+	ErrorLevelFmt
+)
+
+func (el ErrorLevel) String() string {
+	switch el {
+	case ErrorLevelLint:
+		return "LINT"
+	case ErrorLevelFmt:
+		return "FMT"
+	default:
+		return "UNKNOWN"
+	}
+}
+
+type ErrorType int
+
+const (
+	ErrUnknown ErrorType = iota
+	ErrUnexpectedToken
+	ErrRedundantComma
+	ErrRedundantLabel
+	ErrUnusedVariable
+)
+
 type LintError struct {
-	Line      int    `json:"line"`
-	Column    int    `json:"column"`
-	EndLine   int    `json:"endLine"`
-	EndColumn int    `json:"endColumn"`
-	Message   string `json:"message"`
+	Line      int        `json:"line"`
+	Column    int        `json:"column"`
+	EndLine   int        `json:"endLine"`
+	EndColumn int        `json:"endColumn"`
+	Message   string     `json:"message"`
+	Level     ErrorLevel `json:"level"`
+	Type      ErrorType  `json:"type"`
+	Args      []string   `json:"args,omitempty"`
 }
 
 func (e LintError) Error() string {
@@ -120,12 +151,23 @@ func (p *Parser) parseStatement() Statement {
 
 	if stmt == nil {
 		if p.LintMode {
+			message := fmt.Sprintf("unexpected token %s (%s)", p.curToken.Type, string(p.curToken.Literal))
+			if p.curToken.Type == ILLEGAL {
+				message = string(p.curToken.Literal)
+			}
+			var args []string
+			if p.curToken.Type != ILLEGAL {
+				args = []string{string(p.curToken.Type), string(p.curToken.Literal)}
+			}
 			p.lintErrors = append(p.lintErrors, LintError{
 				Line:      p.curToken.Line,
 				Column:    p.curToken.Column,
 				EndLine:   p.curToken.Line,
 				EndColumn: p.curToken.Column + len(p.curToken.Literal),
-				Message:   fmt.Sprintf("unexpected token %s (%s)", p.curToken.Type, string(p.curToken.Literal)),
+				Message:   message,
+				Level:     ErrorLevelLint,
+				Type:      ErrUnexpectedToken,
+				Args:      args,
 			})
 		} else {
 			p.errors = append(p.errors, fmt.Sprintf("unexpected token %s (%s) on line %d", p.curToken.Type, string(p.curToken.Literal), p.curToken.Line))
@@ -190,6 +232,8 @@ func (p *Parser) parseBlockBody() *RootNode {
 				EndLine:   p.curToken.Line,
 				EndColumn: p.curToken.Column + len(p.curToken.Literal),
 				Message:   "redundant comma; statements in a block should be separated by newlines",
+				Level:     ErrorLevelFmt,
+				Type:      ErrRedundantComma,
 			})
 			p.nextToken()
 		}

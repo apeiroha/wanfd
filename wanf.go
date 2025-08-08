@@ -70,6 +70,9 @@ func (a *astAnalyzer) Analyze(node Node) Node {
 				EndLine:   stmt.Token.Line,
 				EndColumn: stmt.Token.Column + len(name),
 				Message:   fmt.Sprintf("variable %q is declared but not used", name),
+				Level:     ErrorLevelLint,
+				Type:      ErrUnusedVariable,
+				Args:      []string{name},
 			}
 			a.errors = append(a.errors, err)
 		}
@@ -142,6 +145,9 @@ func (a *astAnalyzer) check(node Node) Node {
 				EndLine:   n.Token.Line,
 				EndColumn: n.Token.Column + len(n.Name.Value),
 				Message:   fmt.Sprintf("block %q is defined only once, the label %q is redundant", n.Name.Value, n.Label.Value),
+				Level:     ErrorLevelFmt,
+				Type:      ErrRedundantLabel,
+				Args:      []string{n.Name.Value, n.Label.Value},
 			}
 			a.errors = append(a.errors, err)
 			return &BlockStatement{

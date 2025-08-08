@@ -42,7 +42,22 @@
         "scopeName": "source.wanf",
         "path": "./syntaxes/wanf.tmLanguage.json"
       }
-    ]
+    ],
+    "configuration": {
+      "title": "WANF",
+      "properties": {
+        "wanf.language": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "en",
+            "zh-cn"
+          ],
+          "default": "auto",
+          "description": "The display language for linter error messages. With 'auto', the extension will use the editor's display language if a translation is available, otherwise it will default to English."
+        }
+      }
+    }
   },
   "devDependencies": {
     "@typescript/native-preview": "7.0.0-dev.20250805.1",

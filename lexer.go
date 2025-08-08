@@ -80,8 +80,14 @@ func (l *Lexer) NextToken() Token {
 			tok.Line = line
 			tok.Column = col
 		} else if l.peekChar() == '*' {
-			tok.Type = COMMENT
-			tok.Literal = l.readMultiLineComment()
+			literal, ok := l.readMultiLineComment()
+			if !ok {
+				tok.Type = ILLEGAL
+				tok.Literal = []byte("unclosed block comment")
+			} else {
+				tok.Type = COMMENT
+				tok.Literal = literal
+			}
 			tok.Line = line
 			tok.Column = col
 		} else {
@@ -153,18 +159,18 @@ func (l *Lexer) readSingleLineComment() []byte {
 	return l.input[position:l.position]
 }
 
-func (l *Lexer) readMultiLineComment() []byte {
+func (l *Lexer) readMultiLineComment() ([]byte, bool) {
 	position := l.position
 	l.readChar() // consume '/'
 	l.readChar() // consume '*'
 	for {
 		if l.ch == 0 {
-			return l.input[position:l.position]
+			return l.input[position:l.position], false // unclosed
 		}
 		if l.ch == '*' && l.peekChar() == '/' {
 			l.readChar()
 			l.readChar()
-			break
+			break // closed
 		}
 		if l.ch == '\n' {
 			l.line++
@@ -172,7 +178,7 @@ func (l *Lexer) readMultiLineComment() []byte {
 		}
 		l.readChar()
 	}
-	return l.input[position:l.position]
+	return l.input[position:l.position], true // closed
 }
 
 func (l *Lexer) readIdentifier() []byte {

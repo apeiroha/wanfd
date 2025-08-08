@@ -66,7 +66,7 @@ log {
 `wanflint` 是WANF的官方Linter和格式化工具。
 
 ```sh
-go install github.com/WJQSERVER/wanf/cmd/wanflint@latest
+go install github.com/WJQSERVER/wanf/wanflint@latest
 ```
 
 #### 3. 使用 `wanflint`
@@ -149,6 +149,12 @@ func main() {
     fmt.Printf("Main API timeout: %s\n", cfg.Server["main_api"].Features.Timeout)
 }
 ```
+
+### 编辑器集成
+
+为了获得最佳的开发体验, 建议安装官方的VS Code扩展, 它提供了语法高亮和实时`lint`检查功能.
+
+*   **[VS Code - WANF Language Support](./vscode/README.md)**: 点击查看详细的安装和配置指南.
 
 ### 贡献
 

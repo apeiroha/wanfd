@@ -73,6 +73,12 @@ server "a" {
 	host = "1"
 }`,
 		},
+		{
+			name:       "unclosed block comment",
+			input:      `a = 1 /* comment`,
+			wantOutput: `a = 1`,
+			wantErrors: []string{"unclosed block comment"},
+		},
 	}
 
 	for _, tc := range testCases {

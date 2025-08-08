@@ -96,7 +96,7 @@ func lintFiles(paths []string, jsonOutput bool) error {
 	if len(allErrors) > 0 {
 		fmt.Fprintln(os.Stderr, "Linter found issues:")
 		for _, e := range allErrors {
-			fmt.Fprintf(os.Stderr, "  - %s:%d:%d: %s\n", "file", e.Line, e.Column, e.Message)
+			fmt.Fprintf(os.Stderr, "  - [%s] %s:%d:%d: %s\n", e.Level, "file", e.Line, e.Column, e.Message)
 		}
 		return fmt.Errorf("linting found issues")
 	}
