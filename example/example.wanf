@@ -15,10 +15,10 @@ info = [
 	"Info 2"
 ]
 
-dashMap {
-	key1 = "value1"
-	key2 = "value2"
-}
+dashMap {[
+	key1 = "value1",
+	key2 = "value2",
+]}
 
 sList {
 	item1 = {
