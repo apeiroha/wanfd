@@ -364,38 +364,38 @@ func (p *Parser) parseMapElementList() []Statement {
 		return elements
 	}
 
-	stmt := p.parseStatement()
-	if stmt == nil {
-		return nil
-	}
-	elements = append(elements, stmt)
-
-	for p.curTokenIs(COMMA) {
-		p.nextToken()
-		if p.curTokenIs(RBRACK) { // trailing comma
-			break
-		}
+	for {
 		stmt := p.parseStatement()
 		if stmt == nil {
+			// A fatal error occurred in parseStatement, abort.
 			return nil
 		}
 		elements = append(elements, stmt)
-	}
 
-	if !p.curTokenIs(RBRACK) {
-		// 改进错误提示: 本应是逗号或 RBRACK, 但都不是, 说明缺少逗号
-		msg := fmt.Sprintf("missing ',' before %s", p.curToken.Type)
-		p.errors = append(p.errors, LintError{
-			Line:      p.curToken.Line,
-			Column:    p.curToken.Column,
-			EndLine:   p.curToken.Line,
-			EndColumn: p.curToken.Column + len(p.curToken.Literal),
-			Message:   msg,
-			Level:     ErrorLevelLint,
-			Type:      ErrMissingComma,
-			Args:      []string{string(p.curToken.Type)},
-		})
-		return nil
+		if p.curTokenIs(RBRACK) {
+			break // End of list
+		}
+
+		if p.curTokenIs(COMMA) {
+			p.nextToken() // Consume comma
+			if p.curTokenIs(RBRACK) {
+				break // Trailing comma
+			}
+		} else {
+			// Error recovery: comma is missing.
+			// Log a warning and proceed as if a comma was there.
+			msg := fmt.Sprintf("missing comma, auto-inserted before %s", p.curToken.Type)
+			p.lintErrors = append(p.lintErrors, LintError{
+				Line:      p.curToken.Line,
+				Column:    p.curToken.Column,
+				EndLine:   p.curToken.Line,
+				EndColumn: p.curToken.Column + 1, // Highlight just the position before the token
+				Message:   msg,
+				Level:     ErrorLevelFmt,
+				Type:      ErrMissingComma,
+				Args:      []string{string(p.curToken.Type)},
+			})
+		}
 	}
 
 	return elements
@@ -454,30 +454,13 @@ func (p *Parser) parseExpressionList(end TokenType) []Expression {
 	for p.peekTokenIs(COMMA) {
 		p.nextToken()
 		p.nextToken()
-		if p.curTokenIs(end) { // Handles trailing comma
+		if p.curTokenIs(end) {
 			break
 		}
 		list = append(list, p.parseExpression(LOWEST))
 	}
-
 	if !p.curTokenIs(end) {
-		if p.peekTokenIs(end) {
-			p.nextToken()
-		} else {
-			p.nextToken() // Move to the offending token to report error on it
-			msg := fmt.Sprintf("missing ',' before %s", p.curToken.Type)
-			p.errors = append(p.errors, LintError{
-				Line:      p.curToken.Line,
-				Column:    p.curToken.Column,
-				EndLine:   p.curToken.Line,
-				EndColumn: p.curToken.Column + len(p.curToken.Literal),
-				Message:   msg,
-				Level:     ErrorLevelLint,
-				Type:      ErrMissingComma,
-				Args:      []string{string(p.curToken.Type)},
-			})
-			return nil
-		}
+		p.expectPeek(end)
 	}
 	return list
 }
@@ -497,18 +480,8 @@ func (p *Parser) expectPeek(t TokenType) bool {
 	return false
 }
 func (p *Parser) peekError(t TokenType) {
-	// expected next token to be %s, got %s instead
 	msg := fmt.Sprintf("expected next token to be %s, got %s instead", t, p.peekToken.Type)
-	p.errors = append(p.errors, LintError{
-		Line:      p.peekToken.Line,
-		Column:    p.peekToken.Column,
-		EndLine:   p.peekToken.Line,
-		EndColumn: p.peekToken.Column + len(p.peekToken.Literal),
-		Message:   msg,
-		Level:     ErrorLevelLint,
-		Type:      ErrExpectDiffToken,
-		Args:      []string{string(t), string(p.peekToken.Type)},
-	})
+	p.appendErrorAt(p.peekToken, msg)
 }
 func (p *Parser) noPrefixParseFnError(t TokenType) {
 	p.appendError(fmt.Sprintf("no prefix parse function for %s found", t))
@@ -524,7 +497,7 @@ func (p *Parser) appendErrorAt(tok Token, msg string) {
 		Column:    tok.Column,
 		EndLine:   tok.Line,
 		EndColumn: tok.Column + len(tok.Literal),
-		Message:   msg,
+		Message:   "parser error: " + msg,
 		Level:     ErrorLevelLint,
 		Type:      ErrUnexpectedToken,
 	})

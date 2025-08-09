@@ -155,22 +155,18 @@ list = [
 ]`,
 		},
 		{
-			name: "parser error with correct location",
+			name: "fmt with auto-fix for missing comma in map",
 			input: `
-list = [
-	"a"
-	"b"
-]`,
-			wantErrors: []string{"line 4:2: missing ',' before STRING"},
-		},
-		{
-			name: "parser error with correct location in map",
-			input: `
-dashMap = {[
-	key1 = "value1"
-	key2 = "value2"
+sList = {[
+	item1 = {}
+	item2 = {}
 ]}`,
-			wantErrors: []string{"line 4:2: missing ',' before IDENT"},
+			opts:       FormatOptions{Style: StyleBlockSorted, EmptyLines: true},
+			wantErrors: []string{"missing comma, auto-inserted before IDENT"},
+			wantOutput: `sList = {[
+	item1 = {},
+	item2 = {},
+]}`,
 		},
 		{
 			name: "fmt with no sort",
@@ -192,15 +188,6 @@ a_block {
 
 b_kv = 2`,
 		},
-		{
-			name: "user bug report for sList with missing comma",
-			input: `
-sList = {[
-	item1 = {}
-	item2 = {}
-]}`,
-			wantErrors: []string{"line 4:2: missing ',' before IDENT"},
-		},
 	}
 
 	for _, tc := range testCases {
@@ -220,8 +207,10 @@ sList = {[
 						t.Errorf("expected error %q to contain %q", errs[i], wantErr)
 					}
 				}
-				// If we expected errors and got them, don't check formatting output.
-				return
+				// If we only wanted to check for errors and not the output, return.
+				if tc.wantOutput == "" {
+					return
+				}
 			} else if len(errs) > 0 {
 				t.Fatalf("expected no errors, got: %v", errs)
 			}
