@@ -6,21 +6,17 @@ This extension provides rich language support for the WANF (WJQserver's Aligned 
 
 *   **Syntax Highlighting**: Provides colorization for keywords, comments, strings, numbers, and other language elements to improve readability.
 *   **Linting**: Integrates with the `wanflint` command-line tool to provide real-time feedback on errors and style issues in your `.wanf` files.
-*   **Snippets**: (Coming soon)
-*   **Formatting**: (Coming soon, via `wanflint fmt`)
+*   **Formatting**: Format your `.wanf` files on save or manually, powered by `wanflint fmt`.
 
 ## Installation
 
-You can install the extension in two ways: from the Visual Studio Code Marketplace or by building it from the source code.
-
-### 1. Install from Marketplace (Recommended)
+The recommended way to install is through the Visual Studio Code Marketplace.
 
 1.  Open **Visual Studio Code**.
 2.  Go to the **Extensions** view (`Ctrl+Shift+X`).
-3.  Search for `WANF Language Support`.
-4.  Click **Install**.
+3.  Search for `WANF Language Support` and click **Install**.
 
-*(Note: The extension is not yet published. This is the intended future installation method.)*
+Alternatively, you can go directly to the [extension's Marketplace page](https://marketplace.visualstudio.com/items?itemName=wjqserver.wanf-language-support) and install from there.
 
 ### 2. Install from Source (Manual)
 
@@ -72,3 +68,11 @@ Once installed, the extension will automatically activate when you open a file w
 
 *   **Syntax Highlighting**: Applied automatically.
 *   **Linting**: Diagnostics and warnings are automatically displayed in the editor. Errors will be underlined, and you can see the full message by hovering over the code or by opening the "Problems" panel (`Ctrl+Shift+M`).
+*   **Formatting**: To format a file, open the Command Palette (`Ctrl+Shift+P`) and run `Format Document`, or configure format on save in your editor settings.
+
+## Extension Settings
+
+This extension contributes the following settings:
+
+*   `wanf.language`: Sets the display language for linter error messages. Options: `auto`, `en`, `zh-cn`. Default is `auto`.
+*   `wanf.format.noSort`: If set to `true`, the formatter will not sort fields within blocks, preserving their original order. Default is `false`.

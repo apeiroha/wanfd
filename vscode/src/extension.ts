@@ -175,12 +175,18 @@ function handleExecutionError(error: any, commandName: 'lint' | 'fmt'): void {
 	// 检查是否是因为 'command not found' 导致的错误。
 	// 这会覆盖 Linux/macOS 的 'not found' 和 Windows 的 '不是内部或外部命令' 等情况。
 	if (error.code === 'ENOENT' || /not found|不是内部或外部命令/i.test(error.message)) {
+		const copyCommand = 'Copy Install Command';
 		const openGuide = 'Open Install Guide';
 		vscode.window.showErrorMessage(
 			'wanflint command not found. Please ensure it is installed and in your PATH.',
+			copyCommand,
 			openGuide
 		).then(selection => {
-			if (selection === openGuide) {
+			if (selection === copyCommand) {
+				const installCommand = 'go install github.com/WJQSERVER/wanf/wanflint@latest';
+				vscode.env.clipboard.writeText(installCommand);
+				vscode.window.showInformationMessage('Install command copied to clipboard!');
+			} else if (selection === openGuide) {
 				// 打开位于插件根目录的 README.md 文件以显示安装指南
 				const readmePath = vscode.Uri.joinPath(extensionContext.extensionUri, 'README.md');
 				vscode.commands.executeCommand('markdown.showPreview', readmePath);
