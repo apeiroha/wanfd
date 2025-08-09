@@ -1,12 +1,13 @@
 package wanf
 
 import (
+	"bytes"
 	"os"
 	"testing"
 )
 
 // Benchmark data - a reasonably complex wanf file content.
-var benchmarkWanfData, _ = os.ReadFile("example.wanf")
+var benchmarkWanfData, _ = os.ReadFile("testfile/example.wanf")
 
 // BenchmarkLexer measures the performance of tokenizing a wanf file.
 func BenchmarkLexer(b *testing.B) {
@@ -50,32 +51,51 @@ func BenchmarkFormat(b *testing.B) {
 	}
 }
 
+// unified benchmark struct, matching testfile/example.wanf
+type benchmarkConfig struct {
+	Application struct {
+		Name            string   `wanf:"name"`
+		Version         float64  `wanf:"version"`
+		DebugMode       bool     `wanf:"debug_mode"`
+		MaxJobs         int      `wanf:"max_concurrent_jobs"`
+		ShutdownTimeout string   `wanf:"shutdown_timeout"`
+		Host            string   `wanf:"host"`
+		AllowedOrigins  []string `wanf:"allowed_origins"`
+	} `wanf:"application"`
+	Database struct {
+		Host string `wanf:"host"`
+		Port int    `wanf:"port"`
+	} `wanf:"database"`
+	Logging struct {
+		Level    string `wanf:"level"`
+		Template string `wanf:"format_template"`
+	} `wanf:"logging"`
+	Server map[string]struct {
+		Address    string `wanf:"address"`
+		Protocol   string `wanf:"protocol"`
+		MaxStreams int    `wanf:"max_streams,omitempty"`
+	} `wanf:"server"`
+	FeatureFlags []string `wanf:"feature_flags"`
+	Middleware   []struct {
+		ID        string `wanf:"id"`
+		Enabled   bool   `wanf:"enabled"`
+		JWTIssuer string `wanf:"jwt_issuer,omitempty"`
+	} `wanf:"middleware"`
+}
+
 // BenchmarkDecode measures the performance of decoding a wanf file into a Go struct.
 func BenchmarkDecode(b *testing.B) {
 	if benchmarkWanfData == nil {
 		b.Skip("Cannot read benchmark data file")
 	}
 
-	// Define a struct that matches the structure of the benchmark data file.
-	type benchmarkConfig struct {
-		Application struct {
-			Name    string   `wanf:"name"`
-			Version float64  `wanf:"version"`
-			Debug   bool     `wanf:"debug_mode"`
-			MaxJobs int      `wanf:"max_concurrent_jobs"`
-			Allowed []string `wanf:"allowed_origins"`
-		} `wanf:"application"`
-		Logging struct {
-			Level    string `wanf:"level"`
-			Template string `wanf:"format_template"`
-		} `wanf:"logging"`
-		Server map[string]interface{} `wanf:"server"`
-	}
-
 	// Pre-populate the cache once before the benchmark loop, as it's a one-time cost.
-	// This ensures we are benchmarking the cached performance.
 	var cfg benchmarkConfig
-	_ = Decode(benchmarkWanfData, &cfg)
+	dec, err := NewDecoder(bytes.NewReader(benchmarkWanfData), WithBasePath("testfile"))
+	if err != nil {
+		b.Fatalf("Failed to create decoder for benchmark setup: %v", err)
+	}
+	_ = dec.Decode(&cfg)
 
 	b.ResetTimer()
 	b.ReportAllocs()
@@ -90,53 +110,19 @@ func BenchmarkDecode(b *testing.B) {
 
 // BenchmarkEncode measures the performance of encoding a Go struct into wanf format.
 func BenchmarkEncode(b *testing.B) {
-	// Define and populate a struct to be used as the source for encoding.
-	type serverConfig struct {
-		Address    string `wanf:"address"`
-		Protocol   string `wanf:"protocol"`
-		MaxStreams int    `wanf:"max_streams"`
+	if benchmarkWanfData == nil {
+		b.Skip("Cannot read benchmark data file")
 	}
-	config := struct {
-		Application struct {
-			Name            string   `wanf:"name"`
-			Version         float64  `wanf:"version"`
-			DebugMode       bool     `wanf:"debug_mode"`
-			MaxConcurrent   int      `wanf:"max_concurrent_jobs"`
-			ShutdownTimeout string   `wanf:"shutdown_timeout"`
-			AllowedOrigins  []string `wanf:"allowed_origins"`
-		} `wanf:"application"`
-		Logging struct {
-			Level  string `wanf:"level"`
-			Format string `wanf:"format_template"`
-		} `wanf:"logging"`
-		Servers map[string]serverConfig `wanf:"server"`
-	}{
-		Application: struct {
-			Name            string   `wanf:"name"`
-			Version         float64  `wanf:"version"`
-			DebugMode       bool     `wanf:"debug_mode"`
-			MaxConcurrent   int      `wanf:"max_concurrent_jobs"`
-			ShutdownTimeout string   `wanf:"shutdown_timeout"`
-			AllowedOrigins  []string `wanf:"allowed_origins"`
-		}{
-			Name:            "PhoenixApp",
-			Version:         1.2,
-			DebugMode:       true,
-			MaxConcurrent:   100,
-			ShutdownTimeout: "30s",
-			AllowedOrigins:  []string{"https://app.example.com", "https://api.example.com"},
-		},
-		Logging: struct {
-			Level  string `wanf:"level"`
-			Format string `wanf:"format_template"`
-		}{
-			Level:  "info",
-			Format: "[${level}] ${timestamp}: ${message}\n    Caller: ${caller}\n    ",
-		},
-		Servers: map[string]serverConfig{
-			"http_api": {Address: ":8080", Protocol: "http"},
-			"grpc_api": {Address: ":8081", Protocol: "grpc", MaxStreams: 200},
-		},
+	// Create a representative config struct by decoding the benchmark file once.
+	// This ensures we are encoding the same data that we decode.
+	var config benchmarkConfig
+	dec, err := NewDecoder(bytes.NewReader(benchmarkWanfData), WithBasePath("testfile"))
+	if err != nil {
+		b.Fatalf("Failed to create decoder for benchmark setup: %v", err)
+	}
+	err = dec.Decode(&config)
+	if err != nil {
+		b.Fatalf("Failed to decode benchmark data for encoder setup: %v", err)
 	}
 
 	b.ResetTimer()

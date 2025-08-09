@@ -517,6 +517,19 @@ func (d *internalDecoder) setSliceField(field, v reflect.Value) error {
 	newSlice := reflect.MakeSlice(sliceType, v.Len(), v.Len())
 	for i := 0; i < v.Len(); i++ {
 		val := v.Index(i).Interface()
+
+		// Handle decoding a map from the AST into a struct in the slice
+		if elemType.Kind() == reflect.Struct {
+			if sourceMap, ok := val.(map[string]interface{}); ok {
+				newStruct := reflect.New(elemType).Elem()
+				if err := d.decodeMapToStruct(sourceMap, newStruct); err != nil {
+					return err
+				}
+				newSlice.Index(i).Set(newStruct)
+				continue
+			}
+		}
+
 		valV := reflect.ValueOf(val)
 		if valV.Type().ConvertibleTo(elemType) {
 			newSlice.Index(i).Set(valV.Convert(elemType))
