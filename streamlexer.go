@@ -7,26 +7,23 @@ import (
 	"unicode"
 )
 
-// --- Stream Lexer (from io.Reader) ---
+// This file contains the stream-based lexer.
 
 // streamLexer 是一个从 io.Reader 读取数据的词法分析器.
-// 它使用 bufio.Reader 来实现高效的预读(peek)功能, 并使用两个交替的 bytes.Buffer 来实现零分配的词法单元字面量生成.
 type streamLexer struct {
-	r       *bufio.Reader
-	ch      byte
-	line    int
-	column  int
-	bufA    bytes.Buffer
-	bufB    bytes.Buffer
-	useBufA bool
+	r      *bufio.Reader
+	ch     byte
+	line   int
+	column int
+	// Reusable buffer for building literals.
+	literalBuf bytes.Buffer
 }
 
-// newStreamLexer 创建一个新的流式词法分析器.
+// newStreamLexer creates a new stream-based lexer.
 func newStreamLexer(r io.Reader) *streamLexer {
 	l := &streamLexer{
-		r:       bufio.NewReader(r),
-		line:    1,
-		useBufA: true,
+		r:    bufio.NewReader(r),
+		line: 1,
 	}
 	l.readChar()
 	return l
@@ -155,35 +152,20 @@ func (l *streamLexer) NextToken() Token {
 	return tok
 }
 
-// activeBuffer 返回当前用于构建字面量的缓冲区, 并在下次调用时切换到另一个.
-// 这保证了在支持解析器两步预读的同时, 无需为每个词法单元分配新的内存.
-const defaultBufferSize = 64
-
-func (l *streamLexer) activeBuffer() *bytes.Buffer {
-	var buf *bytes.Buffer
-	if l.useBufA {
-		buf = &l.bufA
-	} else {
-		buf = &l.bufB
-	}
-	l.useBufA = !l.useBufA // 为下一个词法单元切换缓冲区
-	buf.Reset()
-	buf.Grow(defaultBufferSize) // 预分配容量以减少后续可能的内存分配
-	return buf
-}
-
 func (l *streamLexer) readDurationSuffix(prefix []byte) []byte {
-	buf := l.activeBuffer()
-	buf.Write(prefix)
+	l.literalBuf.Reset()
+	l.literalBuf.Write(prefix)
 	if l.ch == 'm' || l.ch == 'u' || l.ch == 'n' {
 		if l.peekChar() == 's' {
-			buf.WriteByte(l.ch)
+			l.literalBuf.WriteByte(l.ch)
 			l.readChar()
 		}
 	}
-	buf.WriteByte(l.ch)
+	l.literalBuf.WriteByte(l.ch)
 	l.readChar()
-	return buf.Bytes()
+	c := make([]byte, l.literalBuf.Len())
+	copy(c, l.literalBuf.Bytes())
+	return c
 }
 
 func (l *streamLexer) skipWhitespace() {
@@ -197,30 +179,32 @@ func (l *streamLexer) skipWhitespace() {
 }
 
 func (l *streamLexer) readSingleLineComment() []byte {
-	buf := l.activeBuffer()
+	l.literalBuf.Reset()
 	for l.ch != '\n' && l.ch != 0 {
-		buf.WriteByte(l.ch)
+		l.literalBuf.WriteByte(l.ch)
 		l.readChar()
 	}
-	return buf.Bytes()
+	c := make([]byte, l.literalBuf.Len())
+	copy(c, l.literalBuf.Bytes())
+	return c
 }
 
 func (l *streamLexer) readMultiLineComment() ([]byte, bool) {
-	buf := l.activeBuffer()
+	l.literalBuf.Reset()
 	startLine, startCol := l.line, l.column
-	buf.WriteByte(l.ch)
+	l.literalBuf.WriteByte(l.ch)
 	l.readChar()
-	buf.WriteByte(l.ch)
+	l.literalBuf.WriteByte(l.ch)
 	l.readChar()
 	for {
 		if l.ch == 0 {
 			l.line, l.column = startLine, startCol
-			return buf.Bytes(), false
+			return l.literalBuf.Bytes(), false
 		}
 		if l.ch == '*' && l.peekChar() == '/' {
-			buf.WriteByte(l.ch)
+			l.literalBuf.WriteByte(l.ch)
 			l.readChar()
-			buf.WriteByte(l.ch)
+			l.literalBuf.WriteByte(l.ch)
 			l.readChar()
 			break
 		}
@@ -228,53 +212,63 @@ func (l *streamLexer) readMultiLineComment() ([]byte, bool) {
 			l.line++
 			l.column = 0
 		}
-		buf.WriteByte(l.ch)
+		l.literalBuf.WriteByte(l.ch)
 		l.readChar()
 	}
-	return buf.Bytes(), true
+	c := make([]byte, l.literalBuf.Len())
+	copy(c, l.literalBuf.Bytes())
+	return c, true
 }
 
 func (l *streamLexer) readIdentifier() []byte {
-	buf := l.activeBuffer()
+	l.literalBuf.Reset()
 	for isIdentifierChar(l.ch) {
-		buf.WriteByte(l.ch)
+		l.literalBuf.WriteByte(l.ch)
 		l.readChar()
 	}
-	return buf.Bytes()
+	c := make([]byte, l.literalBuf.Len())
+	copy(c, l.literalBuf.Bytes())
+	return c
 }
 
 func (l *streamLexer) readNumber() []byte {
-	buf := l.activeBuffer()
+	l.literalBuf.Reset()
 	isFloat := false
 	for unicode.IsDigit(rune(l.ch)) || (l.ch == '.' && !isFloat) {
 		if l.ch == '.' {
 			isFloat = true
 		}
-		buf.WriteByte(l.ch)
+		l.literalBuf.WriteByte(l.ch)
 		l.readChar()
 	}
-	return buf.Bytes()
+	c := make([]byte, l.literalBuf.Len())
+	copy(c, l.literalBuf.Bytes())
+	return c
 }
 
 func (l *streamLexer) readString(quote byte) []byte {
-	buf := l.activeBuffer()
+	l.literalBuf.Reset()
 	l.readChar()
 	for {
 		if l.ch == quote || l.ch == 0 {
 			break
 		}
-		buf.WriteByte(l.ch)
+		l.literalBuf.WriteByte(l.ch)
 		l.readChar()
 	}
 	l.readChar()
-	return buf.Bytes()
+	c := make([]byte, l.literalBuf.Len())
+	copy(c, l.literalBuf.Bytes())
+	return c
 }
 
 func (l *streamLexer) readUntilEndOfLine() []byte {
-	buf := l.activeBuffer()
+	l.literalBuf.Reset()
 	for l.ch != '\n' && l.ch != '\r' && l.ch != 0 {
-		buf.WriteByte(l.ch)
+		l.literalBuf.WriteByte(l.ch)
 		l.readChar()
 	}
-	return buf.Bytes()
+	c := make([]byte, l.literalBuf.Len())
+	copy(c, l.literalBuf.Bytes())
+	return c
 }

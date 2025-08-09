@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -244,7 +245,48 @@ func (d *internalDecoder) setField(field reflect.Value, val interface{}) error {
 		}
 		return d.setField(field.Elem(), val)
 	}
+
 	v := reflect.ValueOf(val)
+
+	// Attempt to convert from string to numeric/bool types
+	if v.Kind() == reflect.String {
+		s := v.String()
+		switch field.Kind() {
+		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+			// Handle time.Duration which is an alias for int64
+			if field.Type() == reflect.TypeOf(time.Duration(0)) {
+				dur, err := time.ParseDuration(s)
+				if err == nil {
+					field.SetInt(int64(dur))
+					return nil
+				}
+			}
+			i, err := strconv.ParseInt(s, 0, field.Type().Bits())
+			if err == nil {
+				field.SetInt(i)
+				return nil
+			}
+		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+			i, err := strconv.ParseUint(s, 0, field.Type().Bits())
+			if err == nil {
+				field.SetUint(i)
+				return nil
+			}
+		case reflect.Float32, reflect.Float64:
+			f, err := strconv.ParseFloat(s, field.Type().Bits())
+			if err == nil {
+				field.SetFloat(f)
+				return nil
+			}
+		case reflect.Bool:
+			b, err := strconv.ParseBool(s)
+			if err == nil {
+				field.SetBool(b)
+				return nil
+			}
+		}
+	}
+
 	if v.Type().ConvertibleTo(field.Type()) {
 		field.Set(v.Convert(field.Type()))
 		return nil
