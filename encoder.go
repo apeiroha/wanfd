@@ -14,6 +14,8 @@ import (
 	"unicode/utf8"
 )
 
+var durationType = reflect.TypeOf(time.Duration(0))
+
 var encoderPool = sync.Pool{
 	New: func() interface{} {
 		return &internalEncoder{
@@ -225,15 +227,17 @@ func (e *internalEncoder) encodeValue(v reflect.Value, depth int) {
 		}
 		v = v.Elem()
 	}
-	if d, ok := v.Interface().(time.Duration); ok {
-		e.buf.WriteString(d.String())
+	if v.Type() == durationType {
+		e.buf.WriteString(time.Duration(v.Int()).String())
 		return
 	}
 	switch v.Kind() {
 	case reflect.String:
 		s := v.String()
 		if e.opts.Style != StyleSingleLine && strings.Contains(s, "\n") {
-			e.buf.WriteString("`" + s + "`")
+			e.buf.WriteByte('`')
+			e.buf.WriteString(s)
+			e.buf.WriteByte('`')
 		} else {
 			e.writeQuotedString(s)
 		}
@@ -563,15 +567,17 @@ func (e *streamInternalEncoder) encodeValue(v reflect.Value, depth int) {
 		}
 		v = v.Elem()
 	}
-	if d, ok := v.Interface().(time.Duration); ok {
-		e.writeString(d.String())
+	if v.Type() == durationType {
+		e.writeString(time.Duration(v.Int()).String())
 		return
 	}
 	switch v.Kind() {
 	case reflect.String:
 		s := v.String()
 		if e.opts.Style != StyleSingleLine && strings.Contains(s, "\n") {
-			e.writeString("`" + s + "`")
+			e.writeByte('`')
+			e.writeString(s)
+			e.writeByte('`')
 		} else {
 			e.writeQuotedString(s)
 		}
