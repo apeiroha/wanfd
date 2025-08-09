@@ -61,7 +61,7 @@ func (e LintError) Error() string {
 }
 
 type Parser struct {
-	l              lexer // Changed from *Lexer to the lexer interface
+	l              lexer
 	errors         []LintError
 	curToken       Token
 	peekToken      Token
@@ -70,7 +70,7 @@ type Parser struct {
 	lintErrors     []LintError
 }
 
-func NewParser(l lexer) *Parser { // Changed from *Lexer to the lexer interface
+func NewParser(l lexer) *Parser {
 	p := &Parser{
 		l:          l,
 		errors:     []LintError{},

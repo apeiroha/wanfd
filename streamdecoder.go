@@ -49,7 +49,6 @@ func (dec *StreamDecoder) Decode(v interface{}) error {
 // decodeBody consumes tokens and decodes them into the reflect.Value.
 func (dec *StreamDecoder) decodeBody(rv reflect.Value) error {
 	for {
-		// At the end of the stream, stop.
 		if dec.p.curTokenIs(EOF) {
 			return io.EOF
 		}
@@ -75,13 +74,11 @@ func (dec *StreamDecoder) decodeBody(rv reflect.Value) error {
 				return fmt.Errorf("wanf: unexpected token %s after identifier %q on line %d", dec.p.peekToken.Type, dec.p.curToken.Literal, dec.p.curToken.Line)
 			}
 		case RBRACE:
-			// This is the end of a block, which is handled by the caller (decodeBlockStatement)
 			return nil
 		default:
 			return fmt.Errorf("wanf: unexpected token %s at top level on line %d", dec.p.curToken.Type, dec.p.curToken.Line)
 		}
 
-		// Advance to the next statement
 		dec.p.nextToken()
 	}
 }
@@ -93,7 +90,7 @@ func (dec *StreamDecoder) decodeAssignStatement(rv reflect.Value) error {
 	if !dec.p.expectPeek(ASSIGN) {
 		return fmt.Errorf("wanf: expected '=' after identifier %q", ident.Literal)
 	}
-	dec.p.nextToken() // Consume the expression's first token
+	dec.p.nextToken()
 
 	exprAST := dec.p.parseExpression(LOWEST)
 	if exprAST == nil {
@@ -106,7 +103,6 @@ func (dec *StreamDecoder) decodeAssignStatement(rv reflect.Value) error {
 
 	field, tag, ok := findFieldAndTag(rv, string(ident.Literal))
 	if !ok {
-		// Field not found, consume the expression to advance the parser.
 		return nil
 	}
 
@@ -119,18 +115,18 @@ func (dec *StreamDecoder) decodeAssignStatement(rv reflect.Value) error {
 // decodeBlockStatement decodes a block statement on the fly.
 func (dec *StreamDecoder) decodeBlockStatement(rv reflect.Value) error {
 	blockName := dec.p.curToken.Literal
-	dec.p.nextToken() // consume block name
+	dec.p.nextToken()
 
 	var label string
 	if dec.p.curTokenIs(STRING) {
 		label = string(dec.p.curToken.Literal)
-		dec.p.nextToken() // consume label
+		dec.p.nextToken()
 	}
 
 	if !dec.p.curTokenIs(LBRACE) {
 		return fmt.Errorf("wanf: expected '{' after block identifier on line %d", dec.p.curToken.Line)
 	}
-	dec.p.nextToken() // consume '{'
+	dec.p.nextToken()
 
 	field, _, ok := findFieldAndTag(rv, string(blockName))
 	if !ok {
@@ -163,7 +159,6 @@ func (dec *StreamDecoder) decodeBlockStatement(rv reflect.Value) error {
 	if !dec.p.curTokenIs(RBRACE) {
 		return fmt.Errorf("wanf: expected '}' to close block %q on line %d", blockName, dec.p.curToken.Line)
 	}
-	// The main loop will call nextToken, so we don't do it here.
 	return nil
 }
 
@@ -180,7 +175,6 @@ func (dec *StreamDecoder) skipBlock() error {
 		if dec.p.curTokenIs(RBRACE) {
 			openBraces--
 			if openBraces == 0 {
-				// The RBRACE is consumed by the main loop's nextToken call
 				break
 			}
 		}

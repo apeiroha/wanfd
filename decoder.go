@@ -119,21 +119,19 @@ func getOrCacheDecoderFields(typ reflect.Type) map[string]decoderCachedField {
 	fields := make(map[string]decoderCachedField)
 	for i := 0; i < typ.NumField(); i++ {
 		field := typ.Field(i)
-		if field.PkgPath != "" { // Skip unexported fields
+		if field.PkgPath != "" {
 			continue
 		}
 
 		tagStr := field.Tag.Get("wanf")
 		tag := parseWanfTag(tagStr, field.Name)
 
-		// Cache by tag name
 		fields[tag.Name] = decoderCachedField{
 			Index:    i,
 			Tag:      tag,
 			FieldTyp: field,
 		}
 
-		// If there's no tag, also cache by field name for case-insensitive lookup
 		if tagStr == "" {
 			if _, exists := fields[field.Name]; !exists {
 				fields[field.Name] = decoderCachedField{
@@ -248,12 +246,10 @@ func (d *internalDecoder) setField(field reflect.Value, val interface{}) error {
 
 	v := reflect.ValueOf(val)
 
-	// Attempt to convert from string to numeric/bool types
 	if v.Kind() == reflect.String {
 		s := v.String()
 		switch field.Kind() {
 		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-			// Handle time.Duration which is an alias for int64
 			if field.Type() == reflect.TypeOf(time.Duration(0)) {
 				dur, err := time.ParseDuration(s)
 				if err == nil {

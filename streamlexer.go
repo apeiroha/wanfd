@@ -9,13 +9,14 @@ import (
 
 // This file contains the stream-based lexer.
 
+var dot = []byte{'.'}
+
 // streamLexer 是一个从 io.Reader 读取数据的词法分析器.
 type streamLexer struct {
-	r      *bufio.Reader
-	ch     byte
-	line   int
-	column int
-	// Reusable buffer for building literals.
+	r          *bufio.Reader
+	ch         byte
+	line       int
+	column     int
 	literalBuf bytes.Buffer
 }
 
@@ -222,7 +223,7 @@ func (l *streamLexer) readMultiLineComment() ([]byte, bool) {
 
 func (l *streamLexer) readIdentifier() []byte {
 	l.literalBuf.Reset()
-	for isIdentifierChar(l.ch) {
+	for isIdentifierStart(l.ch) || unicode.IsDigit(rune(l.ch)) {
 		l.literalBuf.WriteByte(l.ch)
 		l.readChar()
 	}

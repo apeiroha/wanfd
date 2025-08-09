@@ -5,12 +5,7 @@ import (
 	"unicode"
 )
 
-// --- Original Lexer (from []byte) ---
-
-var (
-	singleCharByteSlices [256][]byte
-	dot                  = []byte{'.'}
-)
+var singleCharByteSlices [256][]byte
 
 func init() {
 	for i := 0; i < 256; i++ {
@@ -129,7 +124,7 @@ func (l *Lexer) NextToken() Token {
 				tok.Type = DUR
 				tok.Literal = l.input[startPos:l.position]
 			} else {
-				if bytes.Contains(literal, dot) {
+				if bytes.Contains(literal, []byte(".")) {
 					tok.Type = FLOAT
 				} else {
 					tok.Type = INT

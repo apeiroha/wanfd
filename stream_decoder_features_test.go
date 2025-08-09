@@ -5,16 +5,11 @@ import (
 	"testing"
 )
 
-// TestStreamDecoder_MisplacedVarError tests that the decoder correctly returns an error
-// if a var declaration appears after a body statement, as per the new spec.
-func TestStreamDecoder_MisplacedVarError(t *testing.T) {
-	wanfData := `
-		host = "localhost"
-		var a = 1 // This should be an error
-	`
-	var cfg struct {
-		Host string `wanf:"host"`
-	}
+// TestStreamDecoder_VarError tests that the decoder correctly returns an error
+// if a var statement is used in stream mode.
+func TestStreamDecoder_VarError(t *testing.T) {
+	wanfData := `var a = 1`
+	var cfg struct{}
 
 	r := strings.NewReader(wanfData)
 	decoder, err := NewStreamDecoder(r)
@@ -24,7 +19,7 @@ func TestStreamDecoder_MisplacedVarError(t *testing.T) {
 
 	err = decoder.Decode(&cfg)
 	if err == nil {
-		t.Fatal("Expected an error for misplaced var declaration, but got nil")
+		t.Fatal("Expected an error for var statement, but got nil")
 	}
 
 	expectedError := "var statements are not supported in stream decoding mode"
@@ -36,13 +31,8 @@ func TestStreamDecoder_MisplacedVarError(t *testing.T) {
 // TestStreamDecoder_ImportError tests that the decoder correctly returns an error
 // if an import statement is used in stream mode.
 func TestStreamDecoder_ImportError(t *testing.T) {
-	wanfData := `
-		import "other.wanf"
-		host = "localhost"
-	`
-	var cfg struct {
-		Host string `wanf:"host"`
-	}
+	wanfData := `import "other.wanf"`
+	var cfg struct{}
 
 	r := strings.NewReader(wanfData)
 	decoder, err := NewStreamDecoder(r)

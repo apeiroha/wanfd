@@ -107,7 +107,6 @@ func (a *astAnalyzer) collect(root Node) {
 			continue
 		}
 
-		// Process the node
 		switch n := node.(type) {
 		case *BlockStatement:
 			a.blockCounts[n.Name.Value]++
@@ -115,7 +114,6 @@ func (a *astAnalyzer) collect(root Node) {
 			a.declaredVars[n.Name.Value] = n
 		}
 
-		// Push children onto the stack
 		switch n := node.(type) {
 		case *RootNode:
 			for i := len(n.Statements) - 1; i >= 0; i-- {
