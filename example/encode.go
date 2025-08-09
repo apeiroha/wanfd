@@ -13,7 +13,6 @@ type Config struct {
 	Info     []string            `wanf:"info"`
 	DashMap  map[string]string   `wanf:"dashMap"`
 	SList    map[string]struct{} `wanf:"sList"`
-	DList    map[string]Detail   `wanf:"dList"`
 }
 
 type Server struct {
@@ -22,9 +21,10 @@ type Server struct {
 }
 
 type Database struct {
-	User     string `wanf:"user"`
-	Password string `wanf:"password"`
-	Port     int    `wanf:"port"`
+	User     string            `wanf:"user"`
+	Password string            `wanf:"password"`
+	Port     int               `wanf:"port"`
+	DList    map[string]Detail `wanf:"dList"`
 }
 
 type Detail struct {
@@ -42,6 +42,10 @@ func main() {
 			User:     "root",
 			Password: "password",
 			Port:     3306,
+			DList: map[string]Detail{
+				"detail1": {ID: 1, Name: "Detail One"},
+				"detail2": {ID: 2, Name: "Detail Two"},
+			},
 		},
 		Name: "My App",
 		Info: []string{"Info 1", "Info 2"},
@@ -52,10 +56,6 @@ func main() {
 		SList: map[string]struct{}{
 			"item1": {},
 			"item2": {},
-		},
-		DList: map[string]Detail{
-			"detail1": {ID: 1, Name: "Detail One"},
-			"detail2": {ID: 2, Name: "Detail Two"},
 		},
 	}
 

@@ -41,6 +41,8 @@ const (
 	ErrRedundantComma
 	ErrRedundantLabel
 	ErrUnusedVariable
+	ErrExpectDiffToken
+	ErrMissingComma
 )
 
 type LintError struct {
@@ -60,7 +62,7 @@ func (e LintError) Error() string {
 
 type Parser struct {
 	l              *Lexer
-	errors         []string
+	errors         []LintError
 	curToken       Token
 	peekToken      Token
 	prefixParseFns map[TokenType]prefixParseFn
@@ -71,7 +73,7 @@ type Parser struct {
 func NewParser(l *Lexer) *Parser {
 	p := &Parser{
 		l:          l,
-		errors:     []string{},
+		errors:     []LintError{},
 		lintErrors: []LintError{},
 	}
 	p.prefixParseFns = make(map[TokenType]prefixParseFn)
@@ -82,14 +84,14 @@ func NewParser(l *Lexer) *Parser {
 	p.registerPrefix(BOOL, p.parseBooleanLiteral)
 	p.registerPrefix(DUR, p.parseDurationLiteral)
 	p.registerPrefix(LBRACK, p.parseListLiteral)
-	p.registerPrefix(LBRACE, p.parseBlockLiteral)
+	p.registerPrefix(LBRACE, p.parseBlockOrMapLiteral)
 	p.registerPrefix(DOLLAR_LBRACE, p.parseVarExpression)
 	p.nextToken()
 	p.nextToken()
 	return p
 }
 
-func (p *Parser) Errors() []string {
+func (p *Parser) Errors() []LintError {
 	return p.errors
 }
 func (p *Parser) SetLintMode(enabled bool) {
@@ -170,7 +172,7 @@ func (p *Parser) parseStatement() Statement {
 				Args:      args,
 			})
 		} else {
-			p.errors = append(p.errors, fmt.Sprintf("unexpected token %s (%s) on line %d", p.curToken.Type, string(p.curToken.Literal), p.curToken.Line))
+			p.appendError(fmt.Sprintf("unexpected token %s (%s)", p.curToken.Type, string(p.curToken.Literal)))
 		}
 		p.nextToken()
 		return nil
@@ -285,10 +287,9 @@ func (p *Parser) parseIdentifier() Expression {
 
 func (p *Parser) parseIntegerLiteral() Expression {
 	lit := &IntegerLiteral{Token: p.curToken}
-	// This conversion creates an allocation.
 	value, err := strconv.ParseInt(string(p.curToken.Literal), 0, 64)
 	if err != nil {
-		p.errors = append(p.errors, fmt.Sprintf("could not parse %q as integer", p.curToken.Literal))
+		p.appendError(fmt.Sprintf("could not parse %q as integer", p.curToken.Literal))
 		return nil
 	}
 	lit.Value = value
@@ -297,10 +298,9 @@ func (p *Parser) parseIntegerLiteral() Expression {
 
 func (p *Parser) parseFloatLiteral() Expression {
 	lit := &FloatLiteral{Token: p.curToken}
-	// This conversion creates an allocation.
 	value, err := strconv.ParseFloat(string(p.curToken.Literal), 64)
 	if err != nil {
-		p.errors = append(p.errors, fmt.Sprintf("could not parse %q as float", p.curToken.Literal))
+		p.appendError(fmt.Sprintf("could not parse %q as float", p.curToken.Literal))
 		return nil
 	}
 	lit.Value = value
@@ -313,10 +313,9 @@ func (p *Parser) parseStringLiteral() Expression {
 
 func (p *Parser) parseBooleanLiteral() Expression {
 	lit := &BoolLiteral{Token: p.curToken}
-	// This conversion creates an allocation.
 	value, err := strconv.ParseBool(string(p.curToken.Literal))
 	if err != nil {
-		p.errors = append(p.errors, fmt.Sprintf("could not parse %q as boolean", p.curToken.Literal))
+		p.appendError(fmt.Sprintf("could not parse %q as boolean", p.curToken.Literal))
 		return nil
 	}
 	lit.Value = value
@@ -332,6 +331,74 @@ func (p *Parser) parseListLiteral() Expression {
 	p.nextToken()
 	list.Elements = p.parseExpressionList(RBRACK)
 	return list
+}
+
+func (p *Parser) parseBlockOrMapLiteral() Expression {
+	if p.peekTokenIs(LBRACK) {
+		return p.parseMapLiteral()
+	}
+	return p.parseBlockLiteral()
+}
+
+func (p *Parser) parseMapLiteral() Expression {
+	mapLit := &MapLiteral{Token: p.curToken} // cur is {
+	p.nextToken()                            // consume {, cur is [
+	p.nextToken()                            // consume [, cur is first element
+
+	mapLit.Elements = p.parseMapElementList()
+	if mapLit.Elements == nil {
+		return nil
+	}
+
+	// after parseMapElementList, curToken is RBRACK
+	if !p.expectPeek(RBRACE) {
+		return nil
+	}
+	return mapLit
+}
+
+func (p *Parser) parseMapElementList() []Statement {
+	var elements []Statement
+
+	if p.curTokenIs(RBRACK) {
+		return elements
+	}
+
+	stmt := p.parseStatement()
+	if stmt == nil {
+		return nil
+	}
+	elements = append(elements, stmt)
+
+	for p.curTokenIs(COMMA) {
+		p.nextToken()
+		if p.curTokenIs(RBRACK) { // trailing comma
+			break
+		}
+		stmt := p.parseStatement()
+		if stmt == nil {
+			return nil
+		}
+		elements = append(elements, stmt)
+	}
+
+	if !p.curTokenIs(RBRACK) {
+		// 改进错误提示: 本应是逗号或 RBRACK, 但都不是, 说明缺少逗号
+		msg := fmt.Sprintf("missing ',' before %s", p.curToken.Type)
+		p.errors = append(p.errors, LintError{
+			Line:      p.curToken.Line,
+			Column:    p.curToken.Column,
+			EndLine:   p.curToken.Line,
+			EndColumn: p.curToken.Column + len(p.curToken.Literal),
+			Message:   msg,
+			Level:     ErrorLevelLint,
+			Type:      ErrMissingComma,
+			Args:      []string{string(p.curToken.Type)},
+		})
+		return nil
+	}
+
+	return elements
 }
 
 func (p *Parser) parseBlockLiteral() Expression {
@@ -359,7 +426,7 @@ func (p *Parser) parseEnvExpression() Expression {
 	}
 	p.nextToken()
 	if !p.curTokenIs(STRING) {
-		p.errors = append(p.errors, "expected string argument for env()")
+		p.appendError("expected string argument for env()")
 		return nil
 	}
 	expr.Name = p.parseStringLiteral().(*StringLiteral)
@@ -367,7 +434,7 @@ func (p *Parser) parseEnvExpression() Expression {
 		p.nextToken()
 		p.nextToken()
 		if !p.curTokenIs(STRING) {
-			p.errors = append(p.errors, "expected string for env() default value")
+			p.appendError("expected string for env() default value")
 			return nil
 		}
 		expr.DefaultValue = p.parseStringLiteral().(*StringLiteral)
@@ -387,13 +454,30 @@ func (p *Parser) parseExpressionList(end TokenType) []Expression {
 	for p.peekTokenIs(COMMA) {
 		p.nextToken()
 		p.nextToken()
-		if p.curTokenIs(end) {
+		if p.curTokenIs(end) { // Handles trailing comma
 			break
 		}
 		list = append(list, p.parseExpression(LOWEST))
 	}
+
 	if !p.curTokenIs(end) {
-		p.expectPeek(end)
+		if p.peekTokenIs(end) {
+			p.nextToken()
+		} else {
+			p.nextToken() // Move to the offending token to report error on it
+			msg := fmt.Sprintf("missing ',' before %s", p.curToken.Type)
+			p.errors = append(p.errors, LintError{
+				Line:      p.curToken.Line,
+				Column:    p.curToken.Column,
+				EndLine:   p.curToken.Line,
+				EndColumn: p.curToken.Column + len(p.curToken.Literal),
+				Message:   msg,
+				Level:     ErrorLevelLint,
+				Type:      ErrMissingComma,
+				Args:      []string{string(p.curToken.Type)},
+			})
+			return nil
+		}
 	}
 	return list
 }
@@ -413,11 +497,39 @@ func (p *Parser) expectPeek(t TokenType) bool {
 	return false
 }
 func (p *Parser) peekError(t TokenType) {
-	p.errors = append(p.errors, fmt.Sprintf("expected next token to be %s, got %s instead", t, p.peekToken.Type))
+	// expected next token to be %s, got %s instead
+	msg := fmt.Sprintf("expected next token to be %s, got %s instead", t, p.peekToken.Type)
+	p.errors = append(p.errors, LintError{
+		Line:      p.peekToken.Line,
+		Column:    p.peekToken.Column,
+		EndLine:   p.peekToken.Line,
+		EndColumn: p.peekToken.Column + len(p.peekToken.Literal),
+		Message:   msg,
+		Level:     ErrorLevelLint,
+		Type:      ErrExpectDiffToken,
+		Args:      []string{string(t), string(p.peekToken.Type)},
+	})
 }
 func (p *Parser) noPrefixParseFnError(t TokenType) {
-	p.errors = append(p.errors, fmt.Sprintf("no prefix parse function for %s found", t))
+	p.appendError(fmt.Sprintf("no prefix parse function for %s found", t))
 }
+
+func (p *Parser) appendError(msg string) {
+	p.appendErrorAt(p.curToken, msg)
+}
+
+func (p *Parser) appendErrorAt(tok Token, msg string) {
+	p.errors = append(p.errors, LintError{
+		Line:      tok.Line,
+		Column:    tok.Column,
+		EndLine:   tok.Line,
+		EndColumn: tok.Column + len(tok.Literal),
+		Message:   msg,
+		Level:     ErrorLevelLint,
+		Type:      ErrUnexpectedToken,
+	})
+}
+
 func (p *Parser) registerPrefix(tokenType TokenType, fn prefixParseFn) {
 	p.prefixParseFns[tokenType] = fn
 }

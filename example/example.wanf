@@ -4,38 +4,34 @@ server {
 }
 
 database {
+	dList = {[
+		detail1 = {
+			id = 1
+			name = "Detail One"
+		},
+		detail2 = {
+			id = 2
+			name = "Detail Two"
+		},
+	]}
 	password = "password"
 	port = 3306
 	user = "root"
 }
 
 name = "My App"
+
 info = [
 	"Info 1",
-	"Info 2"
+	"Info 2",
 ]
 
-dashMap {[
+dashMap = {[
 	key1 = "value1",
 	key2 = "value2",
 ]}
 
-sList {
-	item1 = {
-
-	}
-	item2 = {
-
-	}
-}
-
-dList {
-	detail1 = {
-		id = 1
-		name = "Detail One"
-	}
-	detail2 = {
-		id = 2
-		name = "Detail Two"
-	}
-}
+sList = {[
+	item1 = {},
+	item2 = {},
+]}

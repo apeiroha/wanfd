@@ -56,6 +56,11 @@
           ],
           "default": "auto",
           "description": "The display language for linter error messages. With 'auto', the extension will use the editor's display language if a translation is available, otherwise it will default to English."
+        },
+        "wanf.format.noSort": {
+          "type": "boolean",
+          "default": false,
+          "description": "If true, the formatter will not sort fields within blocks, preserving the original order."
         }
       }
     }

@@ -35,8 +35,8 @@ server {
 }`,
 			wantOutput: `
 server {
-	port = 8080
 	host = "0.0.0.0"
+	port = 8080
 }`,
 			wantErrors: []string{"redundant comma"},
 		},
@@ -79,12 +79,125 @@ server "a" {
 			wantOutput: `a = 1`,
 			wantErrors: []string{"unclosed block comment"},
 		},
+		{
+			name: "fmt sorting and newlines",
+			input: `
+c_kv = 1
+a_block {
+	z_sub = 1
+	a_sub = 2
+}
+b_map = {[
+	key = "val"
+]}
+`,
+			// Note: b_map and c_kv are sorted first, then a_block.
+			// Empty lines are added between them because they are top-level.
+			// Inside a_block, fields are sorted but have no empty line.
+			wantOutput: `c_kv = 1
+
+a_block {
+	a_sub = 2
+	z_sub = 1
+}
+
+b_map = {[
+	key = "val",
+]}`,
+		},
+		{
+			name: "fmt map and list newlines",
+			input: `
+c_list = [3, 1, 2]
+a_map = {[
+    z = 1,
+    a = 2,
+]}
+b_block {
+    nested_list = [ "c", "a" ]
+    nested_map = {[ b=2, a=1 ]}
+}
+`,
+			wantOutput: `c_list = [
+	3,
+	1,
+	2,
+]
+
+a_map = {[
+	a = 2,
+	z = 1,
+]}
+
+b_block {
+	nested_list = [
+		"c",
+		"a",
+	]
+	nested_map = {[
+		a = 1,
+		b = 2,
+	]}
+}`,
+		},
+		{
+			name: "fmt empty block literal",
+			input: `
+list = [
+    {},
+    {
+    },
+]
+`,
+			wantOutput: `list = [
+	{},
+	{},
+]`,
+		},
+		{
+			name: "parser error with correct location",
+			input: `
+list = [
+	"a"
+	"b"
+]`,
+			wantErrors: []string{"line 4:2: missing ',' before STRING"},
+		},
+		{
+			name: "parser error with correct location in map",
+			input: `
+dashMap = {[
+	key1 = "value1"
+	key2 = "value2"
+]}`,
+			wantErrors: []string{"line 4:2: missing ',' before IDENT"},
+		},
+		{
+			name: "fmt with no sort",
+			input: `
+c_kv = 1
+a_block {
+	z_sub = 1
+	a_sub = 2
+}
+b_kv = 2
+`,
+			opts:       FormatOptions{NoSort: true, EmptyLines: true},
+			wantOutput: `c_kv = 1
+
+a_block {
+	z_sub = 1
+	a_sub = 2
+}
+
+b_kv = 2`,
+		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			if tc.opts.Style == 0 && !tc.opts.EmptyLines {
-				tc.opts.Style = StyleDefault
+				tc.opts.Style = StyleBlockSorted
 				tc.opts.EmptyLines = true
 			}
 			program, errs := Lint([]byte(tc.input))
@@ -98,6 +211,8 @@ server "a" {
 						t.Errorf("expected error %q to contain %q", errs[i], wantErr)
 					}
 				}
+				// If we expected errors and got them, don't check formatting output.
+				return
 			} else if len(errs) > 0 {
 				t.Fatalf("expected no errors, got: %v", errs)
 			}

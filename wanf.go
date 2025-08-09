@@ -20,15 +20,7 @@ func Lint(data []byte) (*RootNode, []LintError) {
 	p.SetLintMode(true)
 	program := p.ParseProgram()
 	if len(p.Errors()) > 0 {
-		return program, []LintError{
-			{
-				Line:      1,
-				Column:    1,
-				EndLine:   1,
-				EndColumn: 1,
-				Message:   "parser error: " + strings.Join(p.Errors(), "; "),
-			},
-		}
+		return program, p.Errors()
 	}
 	allErrors := p.LintErrors()
 	analyzer := &astAnalyzer{
@@ -117,6 +109,10 @@ func (a *astAnalyzer) collect(root Node) {
 			for i := len(n.Elements) - 1; i >= 0; i-- {
 				stack = append(stack, n.Elements[i])
 			}
+		case *MapLiteral:
+			for i := len(n.Elements) - 1; i >= 0; i-- {
+				stack = append(stack, n.Elements[i])
+			}
 		case *VarStatement:
 			stack = append(stack, n.Value)
 		}
@@ -174,6 +170,11 @@ func (a *astAnalyzer) check(node Node) Node {
 			n.Elements[i] = a.check(el).(Expression)
 		}
 		return n
+	case *MapLiteral:
+		for i, st := range n.Elements {
+			n.Elements[i] = a.check(st).(Statement)
+		}
+		return n
 	case *VarStatement:
 		if n.Value != nil {
 			n.Value = a.check(n.Value).(Expression)
@@ -217,7 +218,11 @@ func NewDecoder(r io.Reader, opts ...DecoderOption) (*Decoder, error) {
 	p := NewParser(l)
 	program := p.ParseProgram()
 	if len(p.Errors()) > 0 {
-		return nil, fmt.Errorf("parser errors: %s", strings.Join(p.Errors(), "\n"))
+		var errs []string
+		for _, err := range p.Errors() {
+			errs = append(errs, err.Error())
+		}
+		return nil, fmt.Errorf("parser errors: %s", strings.Join(errs, "\n"))
 	}
 	d := &internalDecoder{vars: make(map[string]interface{})}
 	for _, opt := range opts {
@@ -265,7 +270,11 @@ func processImports(stmts []Statement, basePath string, processed map[string]boo
 		p := NewParser(l)
 		program := p.ParseProgram()
 		if len(p.Errors()) > 0 {
-			return nil, fmt.Errorf("parser errors in imported file %q: %s", importPath, strings.Join(p.Errors(), "\n"))
+			var errs []string
+			for _, err := range p.Errors() {
+				errs = append(errs, err.Error())
+			}
+			return nil, fmt.Errorf("parser errors in imported file %q: %s", importPath, strings.Join(errs, "\n"))
 		}
 		importedStmts, err := processImports(program.Statements, filepath.Dir(absImportPath), processed)
 		if err != nil {
@@ -404,10 +413,52 @@ func (d *internalDecoder) setField(field reflect.Value, val interface{}) error {
 		field.Set(v.Convert(field.Type()))
 		return nil
 	}
+	if field.Kind() == reflect.Map && v.Kind() == reflect.Map {
+		return d.setMapField(field, v)
+	}
 	if field.Kind() == reflect.Slice && v.Kind() == reflect.Slice {
 		return d.setSliceField(field, v)
 	}
 	return fmt.Errorf("cannot set field of type %s with value of type %T", field.Type(), val)
+}
+
+func (d *internalDecoder) setMapField(field, v reflect.Value) error {
+	mapType := field.Type()
+	if field.IsNil() {
+		field.Set(reflect.MakeMap(mapType))
+	}
+	elemType := mapType.Elem()
+
+	for _, key := range v.MapKeys() {
+		val := v.MapIndex(key).Interface()
+		valV := reflect.ValueOf(val)
+
+		if elemType.Kind() == reflect.Struct {
+			if elemType.NumField() == 0 {
+				field.SetMapIndex(key, reflect.New(elemType).Elem())
+				continue
+			}
+
+			sourceMap, ok := val.(map[string]interface{})
+			if !ok {
+				return fmt.Errorf("value for struct map must be a map object, got %T", val)
+			}
+			newStruct := reflect.New(elemType).Elem()
+			if err := d.decodeMapToStruct(sourceMap, newStruct); err != nil {
+				return err
+			}
+			field.SetMapIndex(key, newStruct)
+			continue
+		}
+
+		if valV.Type().ConvertibleTo(elemType) {
+			field.SetMapIndex(key, valV.Convert(elemType))
+			continue
+		}
+
+		return fmt.Errorf("cannot convert map value %v to %s", val, elemType)
+	}
+	return nil
 }
 
 func (d *internalDecoder) setSliceField(field, v reflect.Value) error {
@@ -466,8 +517,26 @@ func (d *internalDecoder) evalExpression(expr Expression) (interface{}, error) {
 		return list, nil
 	case *BlockLiteral:
 		return d.decodeBlockToMap(e.Body)
+	case *MapLiteral:
+		return d.decodeMapLiteralToMap(e)
 	}
 	return nil, fmt.Errorf("unknown expression type: %T", expr)
+}
+
+func (d *internalDecoder) decodeMapLiteralToMap(ml *MapLiteral) (map[string]interface{}, error) {
+	m := make(map[string]interface{})
+	for _, stmt := range ml.Elements {
+		assign, ok := stmt.(*AssignStatement)
+		if !ok {
+			return nil, fmt.Errorf("only 'key = value' assignments are allowed inside a map literal {[...]}, got %T", stmt)
+		}
+		val, err := d.evalExpression(assign.Value)
+		if err != nil {
+			return nil, err
+		}
+		m[assign.Name.Value] = val
+	}
+	return m, nil
 }
 
 func (d *internalDecoder) decodeBlockToMap(body *RootNode) (map[string]interface{}, error) {

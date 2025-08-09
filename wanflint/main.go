@@ -35,8 +35,8 @@ func main() {
 	jsonOutput := lintCmd.Bool("json", false, "Output issues in JSON format")
 
 	fmtCmd := flag.NewFlagSet("fmt", flag.ExitOnError)
-	fmtStyle := fmtCmd.String("style", "default", "Output style (default, streaming, single-line)")
-	concurrent := fmtCmd.Bool("concurrent", false, "Enable experimental concurrent formatting")
+	displayOutput := fmtCmd.Bool("d", false, "Display formatted output instead of writing to file")
+	noSort := fmtCmd.Bool("nosort", false, "Do not sort fields within blocks")
 
 	switch os.Args[1] {
 	case "lint":
@@ -57,7 +57,7 @@ func main() {
 			fmt.Fprintln(os.Stderr, "Error: missing file paths for fmt command.")
 			os.Exit(1)
 		}
-		if err := formatFiles(paths, *fmtStyle, *concurrent); err != nil {
+		if err := formatFiles(paths, *displayOutput, *noSort); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
@@ -108,29 +108,18 @@ func lintFiles(paths []string, jsonOutput bool) error {
 	return nil
 }
 
-func formatFiles(paths []string, style string, concurrent bool) error {
-	if !concurrent {
-		// 顺序格式化
-		for _, path := range paths {
-			if err := formatFile(path, style); err != nil {
-				return err
-			}
-		}
-		return nil
-	}
-
-	// 并发格式化
-	numWorkers := runtime.NumCPU()
+func formatFiles(paths []string, displayOnly bool, noSort bool) error {
+	var wg sync.WaitGroup
 	pathsChan := make(chan string, len(paths))
 	errChan := make(chan error, len(paths))
-	var wg sync.WaitGroup
+	numWorkers := runtime.NumCPU()
 
 	for i := 0; i < numWorkers; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			for path := range pathsChan {
-				err := formatFile(path, style)
+				err := formatFile(path, displayOnly, noSort)
 				if err != nil {
 					errChan <- err
 				}
@@ -158,35 +147,33 @@ func formatFiles(paths []string, style string, concurrent bool) error {
 	return nil
 }
 
-func formatFile(path string, style string) error {
+func formatFile(path string, displayOnly bool, noSort bool) error {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return fmt.Errorf("could not read file %s: %w", path, err)
 	}
 
+	// Lint first to catch parsing errors and get the AST
 	program, errs := wanf.Lint(data)
 	if len(errs) > 0 {
-		// 在格式化模式下,即使存在非致命错误,我们仍然会继续格式化,
-		// 但会将错误信息打印到 stderr.
-		// 注意: 在并发模式下,这里的打印可能会交错,这是可以接受的.
+		// In format mode, we still format even if there are non-fatal errors,
+		// but we print the errors to stderr.
+		// Note: In concurrent mode, these prints might be interleaved, which is acceptable.
 		fmt.Fprintf(os.Stderr, "Warning: found %d issues in %s:\n", len(errs), path)
 		for _, e := range errs {
 			fmt.Fprintf(os.Stderr, "  - %s\n", e.Error())
 		}
 	}
 
-	opts := wanf.FormatOptions{EmptyLines: true}
-	switch style {
-	case "streaming":
-		opts.Style = wanf.StyleStreaming
-	case "single-line":
-		opts.Style = wanf.StyleSingleLine
-		opts.EmptyLines = false
-	default:
-		opts.Style = wanf.StyleDefault
+	// Use the default, opinionated style for the formatter.
+	opts := wanf.FormatOptions{Style: wanf.StyleBlockSorted, EmptyLines: true, NoSort: noSort}
+	formatted := wanf.Format(program, opts)
+
+	if displayOnly {
+		os.Stdout.Write(formatted)
+		return nil
 	}
 
-	formatted := wanf.Format(program, opts)
 	if !bytes.Equal(data, formatted) {
 		if err := os.WriteFile(path, formatted, 0644); err != nil {
 			return fmt.Errorf("failed to write formatted file %s: %w", path, err)

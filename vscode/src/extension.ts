@@ -66,8 +66,15 @@ class WanfFormattingProvider implements vscode.DocumentFormattingEditProvider {
 	 */
 	public async provideDocumentFormattingEdits(document: vscode.TextDocument): Promise<vscode.TextEdit[]> {
 		try {
-			// wanflint fmt 命令会直接修改文件, 所以我们只需要执行它
-			const command = `wanflint fmt ${document.fileName}`;
+			const config = vscode.workspace.getConfiguration('wanf');
+			const noSort = config.get<boolean>('format.noSort', false);
+
+			let command = "wanflint fmt";
+			if (noSort) {
+				command += " --nosort";
+			}
+			command += ` ${document.fileName}`;
+
 			console.log(`[wanf-format] Executing command: ${command}`);
 			await exec(command);
 			// 由于 `wanflint fmt` 是原地修改文件, VS Code 会自动检测到变化并重新加载。
@@ -168,12 +175,18 @@ function handleExecutionError(error: any, commandName: 'lint' | 'fmt'): void {
 	// 检查是否是因为 'command not found' 导致的错误。
 	// 这会覆盖 Linux/macOS 的 'not found' 和 Windows 的 '不是内部或外部命令' 等情况。
 	if (error.code === 'ENOENT' || /not found|不是内部或外部命令/i.test(error.message)) {
+		const copyCommand = 'Copy Install Command';
 		const openGuide = 'Open Install Guide';
 		vscode.window.showErrorMessage(
 			'wanflint command not found. Please ensure it is installed and in your PATH.',
+			copyCommand,
 			openGuide
 		).then(selection => {
-			if (selection === openGuide) {
+			if (selection === copyCommand) {
+				const installCommand = 'go install github.com/WJQSERVER/wanf/wanflint@latest';
+				vscode.env.clipboard.writeText(installCommand);
+				vscode.window.showInformationMessage('Install command copied to clipboard!');
+			} else if (selection === openGuide) {
 				// 打开位于插件根目录的 README.md 文件以显示安装指南
 				const readmePath = vscode.Uri.joinPath(extensionContext.extensionUri, 'README.md');
 				vscode.commands.executeCommand('markdown.showPreview', readmePath);
@@ -195,12 +208,16 @@ function handleExecutionError(error: any, commandName: 'lint' | 'fmt'): void {
 // 	ErrRedundantComma (2)
 // 	ErrRedundantLabel (3)
 // 	ErrUnusedVariable (4)
+// 	ErrExpectDiffToken (5)
+// 	ErrMissingComma (6)
 // )
 const translationMap: { [key: number]: string } = {
 	1: "意外的标记: %s (%s)",
 	2: "冗余的逗号; 块中的语句应由换行符分隔。",
 	3: "块“%s”只定义了一次, 标签“%s”是多余的。",
 	4: "变量“%s”已声明但从未使用。",
+	5: "期望下一个标记是 %s, 但得到的是 %s",
+	6: "在标记 '%s' 前缺少 ','",
 };
 
 /**
