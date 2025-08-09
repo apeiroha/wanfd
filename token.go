@@ -1,7 +1,6 @@
 package wanf
 
 import (
-	"bytes"
 	"fmt"
 )
 
@@ -44,18 +43,16 @@ const (
 )
 
 // LookupIdentifier 检查 ident 是否是关键字.
-// 使用 bytes.Equal 可以实现零内存分配的关键字匹配.
+// 使用 switch 和零拷贝的 BytesToString 函数.
 func LookupIdentifier(ident []byte) TokenType {
-	if bytes.Equal(ident, []byte("import")) {
+	switch BytesToString(ident) {
+	case "import":
 		return IMPORT
-	}
-	if bytes.Equal(ident, []byte("var")) {
+	case "var":
 		return VAR
-	}
-	if bytes.Equal(ident, []byte("true")) {
+	case "true":
 		return BOOL
-	}
-	if bytes.Equal(ident, []byte("false")) {
+	case "false":
 		return BOOL
 	}
 	return IDENT
