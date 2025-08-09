@@ -87,25 +87,27 @@ func (p *RootNode) Format(w *bytes.Buffer, indent string, opts FormatOptions) {
 
 	statements := p.Statements
 	// 排序逻辑
-	if opts.Style == StyleAllSorted || (opts.Style == StyleBlockSorted && indent != "") {
-		sort.SliceStable(statements, func(i, j int) bool {
-			iIsBlock := isBlockLike(statements[i])
-			jIsBlock := isBlockLike(statements[j])
-			if iIsBlock != jIsBlock {
-				return !iIsBlock
-			}
-			// 获取语句的名称以进行字母排序
-			getName := func(s Statement) string {
-				if as, ok := s.(*AssignStatement); ok {
-					return as.Name.Value
+	if !opts.NoSort {
+		if opts.Style == StyleAllSorted || (opts.Style == StyleBlockSorted && indent != "") {
+			sort.SliceStable(statements, func(i, j int) bool {
+				iIsBlock := isBlockLike(statements[i])
+				jIsBlock := isBlockLike(statements[j])
+				if iIsBlock != jIsBlock {
+					return !iIsBlock
 				}
-				if bs, ok := s.(*BlockStatement); ok {
-					return bs.Name.Value
+				// 获取语句的名称以进行字母排序
+				getName := func(s Statement) string {
+					if as, ok := s.(*AssignStatement); ok {
+						return as.Name.Value
+					}
+					if bs, ok := s.(*BlockStatement); ok {
+						return bs.Name.Value
+					}
+					return ""
 				}
-				return ""
-			}
-			return getName(statements[i]) < getName(statements[j])
-		})
+				return getName(statements[i]) < getName(statements[j])
+			})
+		}
 	}
 
 	for i, s := range statements {
@@ -515,11 +517,13 @@ func (ml *MapLiteral) String() string {
 }
 func (ml *MapLiteral) Format(w *bytes.Buffer, indent string, opts FormatOptions) {
 	// Sort elements by key for deterministic output.
-	sort.SliceStable(ml.Elements, func(i, j int) bool {
-		iName := ml.Elements[i].(*AssignStatement).Name.Value
-		jName := ml.Elements[j].(*AssignStatement).Name.Value
-		return iName < jName
-	})
+	if !opts.NoSort {
+		sort.SliceStable(ml.Elements, func(i, j int) bool {
+			iName := ml.Elements[i].(*AssignStatement).Name.Value
+			jName := ml.Elements[j].(*AssignStatement).Name.Value
+			return iName < jName
+		})
+	}
 
 	if opts.Style == StyleSingleLine {
 		w.WriteString("{[")

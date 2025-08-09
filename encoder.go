@@ -120,27 +120,29 @@ type cachedField struct {
 func (e *internalEncoder) encodeStruct(v reflect.Value, depth int) error {
 	fields := e.gatherFields(v)
 
-	// 根据编码风格对字段进行排序
-	// Sort fields based on the encoding style.
-	switch e.opts.Style {
-	case StyleBlockSorted, StyleAllSorted:
-		// StyleBlockSorted只在嵌套层级排序, StyleAllSorted在所有层级排序
-		// StyleBlockSorted only sorts in nested levels, StyleAllSorted sorts at all levels.
-		if e.opts.Style == StyleAllSorted || depth > 0 {
-			sort.Slice(fields, func(i, j int) bool {
-				// isBlock为false的是kv对, true的是嵌套块. kv对优先.
-				// Fields where isBlock is false are key-value pairs, true are nested blocks. KV pairs come first.
-				if fields[i].isBlock != fields[j].isBlock {
-					return !fields[i].isBlock
-				}
-				// 同类型按名称字母顺序排序
-				// Same types are sorted alphabetically by name.
-				return fields[i].name < fields[j].name
-			})
+	if !e.opts.NoSort {
+		// 根据编码风格对字段进行排序
+		// Sort fields based on the encoding style.
+		switch e.opts.Style {
+		case StyleBlockSorted, StyleAllSorted:
+			// StyleBlockSorted只在嵌套层级排序, StyleAllSorted在所有层级排序
+			// StyleBlockSorted only sorts in nested levels, StyleAllSorted sorts at all levels.
+			if e.opts.Style == StyleAllSorted || depth > 0 {
+				sort.Slice(fields, func(i, j int) bool {
+					// isBlock为false的是kv对, true的是嵌套块. kv对优先.
+					// Fields where isBlock is false are key-value pairs, true are nested blocks. KV pairs come first.
+					if fields[i].isBlock != fields[j].isBlock {
+						return !fields[i].isBlock
+					}
+					// 同类型按名称字母顺序排序
+					// Same types are sorted alphabetically by name.
+					return fields[i].name < fields[j].name
+				})
+			}
+		case StyleStreaming:
+			// StyleStreaming不进行任何排序, 保持结构体定义顺序
+			// StyleStreaming does no sorting, preserving the struct definition order.
 		}
-	case StyleStreaming:
-		// StyleStreaming不进行任何排序, 保持结构体定义顺序
-		// StyleStreaming does no sorting, preserving the struct definition order.
 	}
 
 	var prevWasBlockLike bool

@@ -36,6 +36,7 @@ func main() {
 
 	fmtCmd := flag.NewFlagSet("fmt", flag.ExitOnError)
 	displayOutput := fmtCmd.Bool("d", false, "Display formatted output instead of writing to file")
+	noSort := fmtCmd.Bool("nosort", false, "Do not sort fields within blocks")
 
 	switch os.Args[1] {
 	case "lint":
@@ -56,7 +57,7 @@ func main() {
 			fmt.Fprintln(os.Stderr, "Error: missing file paths for fmt command.")
 			os.Exit(1)
 		}
-		if err := formatFiles(paths, *displayOutput); err != nil {
+		if err := formatFiles(paths, *displayOutput, *noSort); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
@@ -107,7 +108,7 @@ func lintFiles(paths []string, jsonOutput bool) error {
 	return nil
 }
 
-func formatFiles(paths []string, displayOnly bool) error {
+func formatFiles(paths []string, displayOnly bool, noSort bool) error {
 	var wg sync.WaitGroup
 	pathsChan := make(chan string, len(paths))
 	errChan := make(chan error, len(paths))
@@ -118,7 +119,7 @@ func formatFiles(paths []string, displayOnly bool) error {
 		go func() {
 			defer wg.Done()
 			for path := range pathsChan {
-				err := formatFile(path, displayOnly)
+				err := formatFile(path, displayOnly, noSort)
 				if err != nil {
 					errChan <- err
 				}
@@ -146,7 +147,7 @@ func formatFiles(paths []string, displayOnly bool) error {
 	return nil
 }
 
-func formatFile(path string, displayOnly bool) error {
+func formatFile(path string, displayOnly bool, noSort bool) error {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return fmt.Errorf("could not read file %s: %w", path, err)
@@ -165,7 +166,7 @@ func formatFile(path string, displayOnly bool) error {
 	}
 
 	// Use the default, opinionated style for the formatter.
-	opts := wanf.FormatOptions{Style: wanf.StyleBlockSorted, EmptyLines: true}
+	opts := wanf.FormatOptions{Style: wanf.StyleBlockSorted, EmptyLines: true, NoSort: noSort}
 	formatted := wanf.Format(program, opts)
 
 	if displayOnly {

@@ -66,8 +66,14 @@ class WanfFormattingProvider implements vscode.DocumentFormattingEditProvider {
 	 */
 	public async provideDocumentFormattingEdits(document: vscode.TextDocument): Promise<vscode.TextEdit[]> {
 		try {
-			// wanflint fmt 命令会直接修改文件, 所以我们只需要执行它
-			const command = `wanflint fmt ${document.fileName}`;
+			const config = vscode.workspace.getConfiguration('wanf');
+			const noSort = config.get<boolean>('format.noSort', false);
+
+			let command = `wanflint fmt ${document.fileName}`;
+			if (noSort) {
+				command += " --nosort";
+			}
+
 			console.log(`[wanf-format] Executing command: ${command}`);
 			await exec(command);
 			// 由于 `wanflint fmt` 是原地修改文件, VS Code 会自动检测到变化并重新加载。

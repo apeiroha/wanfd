@@ -172,6 +172,26 @@ dashMap = {[
 ]}`,
 			wantErrors: []string{"line 4:2: missing ',' before IDENT"},
 		},
+		{
+			name: "fmt with no sort",
+			input: `
+c_kv = 1
+a_block {
+	z_sub = 1
+	a_sub = 2
+}
+b_kv = 2
+`,
+			opts:       FormatOptions{NoSort: true, EmptyLines: true},
+			wantOutput: `c_kv = 1
+
+a_block {
+	z_sub = 1
+	a_sub = 2
+}
+
+b_kv = 2`,
+		},
 	}
 
 	for _, tc := range testCases {

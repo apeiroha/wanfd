@@ -31,4 +31,5 @@ const (
 type FormatOptions struct {
 	Style      OutputStyle
 	EmptyLines bool // If true, adds empty lines between blocks in supported styles.
+	NoSort     bool // If true, disables sorting within blocks.
 }
