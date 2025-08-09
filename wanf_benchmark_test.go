@@ -89,23 +89,44 @@ func BenchmarkDecode(b *testing.B) {
 	if benchmarkWanfData == nil {
 		b.Skip("Cannot read benchmark data file")
 	}
-
-	// Pre-populate the cache once before the benchmark loop, as it's a one-time cost.
-	var cfg benchmarkConfig
-	dec, err := NewDecoder(bytes.NewReader(benchmarkWanfData), WithBasePath("testfile"))
-	if err != nil {
-		b.Fatalf("Failed to create decoder for benchmark setup: %v", err)
-	}
-	_ = dec.Decode(&cfg)
-
-	b.ResetTimer()
 	b.ReportAllocs()
+	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
 		var cfg benchmarkConfig
-		// The Decode function is what we are testing.
-		// With the cache, this should be much faster on subsequent runs.
-		_ = Decode(benchmarkWanfData, &cfg)
+		dec, err := NewDecoder(bytes.NewReader(benchmarkWanfData), WithBasePath("testfile"))
+		if err != nil {
+			b.Fatalf("NewDecoder failed during benchmark: %v", err)
+		}
+		err = dec.Decode(&cfg)
+		if err != nil {
+			b.Fatalf("Decode failed during benchmark: %v", err)
+		}
+	}
+}
+
+// BenchmarkStreamDecode 测试流式解码器的性能.
+func BenchmarkStreamDecode(b *testing.B) {
+	if benchmarkWanfData == nil {
+		b.Skip("Cannot read benchmark data file")
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	reader := bytes.NewReader(benchmarkWanfData)
+
+	for i := 0; i < b.N; i++ {
+		var cfg benchmarkConfig
+		reader.Seek(0, io.SeekStart)
+		// Provide the base path for resolving the import statement in the benchmark file.
+		dec, err := NewStreamDecoder(reader, WithBasePath("testfile"))
+		if err != nil {
+			b.Fatalf("NewStreamDecoder failed during benchmark: %v", err)
+		}
+		err = dec.Decode(&cfg)
+		if err != nil {
+			b.Fatalf("Decode failed during benchmark: %v", err)
+		}
 	}
 }
 
