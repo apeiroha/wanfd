@@ -192,6 +192,15 @@ a_block {
 
 b_kv = 2`,
 		},
+		{
+			name: "user bug report for sList with missing comma",
+			input: `
+sList = {[
+	item1 = {}
+	item2 = {}
+]}`,
+			wantErrors: []string{"line 4:2: missing ',' before IDENT"},
+		},
 	}
 
 	for _, tc := range testCases {
