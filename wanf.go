@@ -9,10 +9,20 @@ import (
 	"reflect"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 )
 
-var varRegex = regexp.MustCompile(`\$\{(\w+)\}`)
+var (
+	varRegex          = regexp.MustCompile(`\$\{(\w+)\}`)
+	decoderFieldCache sync.Map // map[reflect.Type]map[string]decoderCachedField
+)
+
+type decoderCachedField struct {
+	Index    int
+	Tag      wanfTag
+	FieldTyp reflect.StructField
+}
 
 func Lint(data []byte) (*RootNode, []LintError) {
 	l := NewLexer(data)
@@ -283,6 +293,46 @@ func processImports(stmts []Statement, basePath string, processed map[string]boo
 		finalStmts = append(finalStmts, importedStmts...)
 	}
 	return finalStmts, nil
+}
+
+func getOrCacheDecoderFields(typ reflect.Type) map[string]decoderCachedField {
+	if cached, ok := decoderFieldCache.Load(typ); ok {
+		return cached.(map[string]decoderCachedField)
+	}
+
+	fields := make(map[string]decoderCachedField)
+	for i := 0; i < typ.NumField(); i++ {
+		field := typ.Field(i)
+		if field.PkgPath != "" { // Skip unexported fields
+			continue
+		}
+
+		tagStr := field.Tag.Get("wanf")
+		tag := parseWanfTag(tagStr, field.Name)
+
+		// Cache by tag name
+		fields[tag.Name] = decoderCachedField{
+			Index:    i,
+			Tag:      tag,
+			FieldTyp: field,
+		}
+
+		// If there's no tag, also cache by field name for case-insensitive lookup
+		if tagStr == "" {
+			// This might overwrite a field with an explicit tag that happens to have the same name,
+			// but tag presence should have priority. The lookup logic will handle this.
+			if _, exists := fields[field.Name]; !exists {
+				fields[field.Name] = decoderCachedField{
+					Index:    i,
+					Tag:      tag,
+					FieldTyp: field,
+				}
+			}
+		}
+	}
+
+	decoderFieldCache.Store(typ, fields)
+	return fields
 }
 
 func (dec *Decoder) Decode(v interface{}) error {
@@ -562,28 +612,20 @@ func (d *internalDecoder) decodeBlockToMap(body *RootNode) (map[string]interface
 
 func findFieldAndTag(structVal reflect.Value, name string) (reflect.Value, wanfTag, bool) {
 	typ := structVal.Type()
+	cachedFields := getOrCacheDecoderFields(typ)
 
-	// First pass: match by `wanf:"..."` tag
-	for i := 0; i < typ.NumField(); i++ {
-		field := typ.Field(i)
-		tagStr := field.Tag.Get("wanf")
-		if tagStr != "" {
-			tag := parseWanfTag(tagStr, field.Name)
-			if tag.Name == name {
-				return structVal.Field(i), tag, true
-			}
-		}
+	// First, try a direct match (case-sensitive)
+	if f, ok := cachedFields[name]; ok {
+		return structVal.Field(f.Index), f.Tag, true
 	}
 
-	// Second pass: case-insensitive match by field name for fields without a tag
-	for i := 0; i < typ.NumField(); i++ {
-		field := typ.Field(i)
-		tagStr := field.Tag.Get("wanf")
-		if tagStr == "" {
-			if strings.EqualFold(field.Name, name) {
-				tag := parseWanfTag("", field.Name)
-				return structVal.Field(i), tag, true
-			}
+	// Second, try case-insensitive match for fields that didn't have an explicit tag name
+	lowerName := strings.ToLower(name)
+	for _, f := range cachedFields {
+		// Only consider fields for case-insensitive match if their tag name was derived from the field name
+		// (i.e., the tag was empty or didn't specify a name)
+		if f.Tag.Name == f.FieldTyp.Name && strings.ToLower(f.FieldTyp.Name) == lowerName {
+			return structVal.Field(f.Index), f.Tag, true
 		}
 	}
 
