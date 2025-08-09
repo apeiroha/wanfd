@@ -104,10 +104,10 @@ key = "value" // This is a line comment.
 		t.Fatalf("stmt.LeadingComments does not contain 2 comments. got=%d", len(stmt.LeadingComments))
 	}
 
-	if stmt.LeadingComments[0].Text != "// This is a leading comment." {
+	if !bytes.Equal(stmt.LeadingComments[0].Text, []byte("// This is a leading comment.")) {
 		t.Errorf("stmt.LeadingComments[0].Text wrong. got=%q", stmt.LeadingComments[0].Text)
 	}
-	if stmt.LeadingComments[1].Text != "// It has two lines." {
+	if !bytes.Equal(stmt.LeadingComments[1].Text, []byte("// It has two lines.")) {
 		t.Errorf("stmt.LeadingComments[1].Text wrong. got=%q", stmt.LeadingComments[1].Text)
 	}
 
@@ -115,7 +115,7 @@ key = "value" // This is a line comment.
 		t.Fatalf("stmt.LineComment is nil")
 	}
 
-	if stmt.LineComment.Text != "// This is a line comment." {
+	if !bytes.Equal(stmt.LineComment.Text, []byte("// This is a line comment.")) {
 		t.Errorf("stmt.LineComment.Text wrong. got=%q", stmt.LineComment.Text)
 	}
 }

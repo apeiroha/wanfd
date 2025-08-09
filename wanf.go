@@ -109,9 +109,9 @@ func (a *astAnalyzer) collect(root Node) {
 
 		switch n := node.(type) {
 		case *BlockStatement:
-			a.blockCounts[string(n.Name.Value)]++
+			a.blockCounts[BytesToString(n.Name.Value)]++
 		case *VarStatement:
-			a.declaredVars[string(n.Name.Value)] = n
+			a.declaredVars[BytesToString(n.Name.Value)] = n
 		}
 
 		switch n := node.(type) {
@@ -154,7 +154,7 @@ func (a *astAnalyzer) check(node Node) Node {
 		if n.Body != nil {
 			n.Body = a.check(n.Body).(*RootNode)
 		}
-		if n.Label != nil && a.blockCounts[string(n.Name.Value)] == 1 {
+		if n.Label != nil && a.blockCounts[BytesToString(n.Name.Value)] == 1 {
 			err := LintError{
 				Line:      n.Token.Line,
 				Column:    n.Token.Column,
@@ -201,10 +201,10 @@ func (a *astAnalyzer) check(node Node) Node {
 		}
 		return n
 	case *VarExpression:
-		a.usedVars[string(n.Name)] = true
+		a.usedVars[BytesToString(n.Name)] = true
 		return n
 	case *StringLiteral:
-		matches := varRegex.FindAllStringSubmatch(string(n.Value), -1)
+		matches := varRegex.FindAllStringSubmatch(BytesToString(n.Value), -1)
 		for _, match := range matches {
 			if len(match) > 1 {
 				a.usedVars[match[1]] = true

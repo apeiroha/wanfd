@@ -36,15 +36,15 @@ type Expression interface {
 // Comment 表示一个注释节点
 type Comment struct {
 	Token Token
-	Text  string
+	Text  []byte
 }
 
 func (c *Comment) expressionNode()      {}
 func (c *Comment) statementNode()       {}
 func (c *Comment) TokenLiteral() string { return string(c.Token.Literal) }
-func (c *Comment) String() string       { return c.Text }
+func (c *Comment) String() string       { return string(c.Text) }
 func (c *Comment) Format(w *bytes.Buffer, indent string, opts FormatOptions) {
-	w.WriteString(c.Text)
+	w.Write(c.Text)
 }
 
 // RootNode 是每个WANF文件AST的根节点.
@@ -151,7 +151,7 @@ func (as *AssignStatement) String() string {
 func (as *AssignStatement) Format(w *bytes.Buffer, indent string, opts FormatOptions) {
 	for _, c := range as.LeadingComments {
 		w.WriteString(indent)
-		w.WriteString(c.Text)
+		w.Write(c.Text)
 		w.WriteString("\n")
 	}
 	w.WriteString(indent)
@@ -162,7 +162,7 @@ func (as *AssignStatement) Format(w *bytes.Buffer, indent string, opts FormatOpt
 	}
 	if as.LineComment != nil {
 		w.WriteString(" ")
-		w.WriteString(as.LineComment.Text)
+		w.Write(as.LineComment.Text)
 	}
 }
 
@@ -190,7 +190,7 @@ func (bs *BlockStatement) String() string {
 func (bs *BlockStatement) Format(w *bytes.Buffer, indent string, opts FormatOptions) {
 	for _, c := range bs.LeadingComments {
 		w.WriteString(indent)
-		w.WriteString(c.Text)
+		w.Write(c.Text)
 		w.WriteString("\n")
 	}
 	w.WriteString(indent)
@@ -237,11 +237,12 @@ func (vs *VarStatement) String() string {
 func (vs *VarStatement) Format(w *bytes.Buffer, indent string, opts FormatOptions) {
 	for _, c := range vs.LeadingComments {
 		w.WriteString(indent)
-		w.WriteString(c.Text)
+		w.Write(c.Text)
 		w.WriteString("\n")
 	}
 	w.WriteString(indent)
-	w.WriteString(vs.TokenLiteral() + " ")
+	w.Write(vs.Token.Literal)
+	w.WriteString(" ")
 	vs.Name.Format(w, indent, opts)
 	w.WriteString(" = ")
 	if vs.Value != nil {
@@ -249,7 +250,7 @@ func (vs *VarStatement) Format(w *bytes.Buffer, indent string, opts FormatOption
 	}
 	if vs.LineComment != nil {
 		w.WriteString(" ")
-		w.WriteString(vs.LineComment.Text)
+		w.Write(vs.LineComment.Text)
 	}
 }
 
@@ -276,15 +277,16 @@ func (is *ImportStatement) String() string {
 func (is *ImportStatement) Format(w *bytes.Buffer, indent string, opts FormatOptions) {
 	for _, c := range is.LeadingComments {
 		w.WriteString(indent)
-		w.WriteString(c.Text)
+		w.Write(c.Text)
 		w.WriteString("\n")
 	}
 	w.WriteString(indent)
-	w.WriteString(is.TokenLiteral() + " ")
+	w.Write(is.Token.Literal)
+	w.WriteString(" ")
 	is.Path.Format(w, indent, opts)
 	if is.LineComment != nil {
 		w.WriteString(" ")
-		w.WriteString(is.LineComment.Text)
+		w.Write(is.LineComment.Text)
 	}
 }
 
