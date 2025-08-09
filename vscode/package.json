@@ -2,7 +2,7 @@
   "name": "wanf-language-support",
   "displayName": "WANF Syntax & Linter",
   "description": "Syntax highlighting and linting for the WANF configuration language.",
-  "version": "0.3.3",
+  "version": "0.4.2",
   "publisher": "wjqserver",
   "repository": {
     "type": "git",

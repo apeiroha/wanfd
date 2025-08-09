@@ -4,6 +4,9 @@ server {
 }
 
 database {
+	password = "password"
+	port = 3306
+	user = "root"
 	dList = {[
 		detail1 = {
 			id = 1
@@ -14,9 +17,6 @@ database {
 			name = "Detail Two"
 		},
 	]}
-	password = "password"
-	port = 3306
-	user = "root"
 }
 
 name = "My App"
