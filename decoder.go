@@ -65,7 +65,7 @@ func NewDecoder(r io.Reader, opts ...DecoderOption) (*Decoder, error) {
 			if err != nil {
 				return nil, err
 			}
-			d.vars[s.Name.Value] = val
+			d.vars[string(s.Name.Value)] = val
 		}
 	}
 	return &Decoder{program: program, d: d}, nil
@@ -79,10 +79,10 @@ func processImports(stmts []Statement, basePath string, processed map[string]boo
 			finalStmts = append(finalStmts, stmt)
 			continue
 		}
-		importPath := filepath.Join(basePath, importStmt.Path.Value)
+		importPath := filepath.Join(basePath, string(importStmt.Path.Value))
 		absImportPath, err := filepath.Abs(importPath)
 		if err != nil {
-			return nil, fmt.Errorf("could not get absolute path for import %q: %w", importPath, err)
+			return nil, fmt.Errorf("could not get absolute path for import %q: %w", string(importStmt.Path.Value), err)
 		}
 		if processed[absImportPath] {
 			continue
@@ -217,7 +217,7 @@ func (d *internalDecoder) decodeBlock(stmt *BlockStatement, rv reflect.Value) er
 			return d.decodeMapStringString(stmt.Body, field)
 		}
 		if stmt.Label == nil {
-			return fmt.Errorf("block %q is for a map, but is missing a label", stmt.Name.Value)
+			return fmt.Errorf("block %q is for a map, but is missing a label", string(stmt.Name.Value))
 		}
 		mapVal := field
 		if mapVal.IsNil() {
@@ -228,7 +228,7 @@ func (d *internalDecoder) decodeBlock(stmt *BlockStatement, rv reflect.Value) er
 		if err := d.decodeRoot(stmt.Body, newStruct); err != nil {
 			return err
 		}
-		mapVal.SetMapIndex(reflect.ValueOf(stmt.Label.Value), newStruct)
+		mapVal.SetMapIndex(reflect.ValueOf(string(stmt.Label.Value)), newStruct)
 	}
 	return nil
 }
@@ -371,24 +371,24 @@ func (d *internalDecoder) evalExpression(expr Expression) (interface{}, error) {
 	case *FloatLiteral:
 		return e.Value, nil
 	case *StringLiteral:
-		return e.Value, nil
+		return string(e.Value), nil
 	case *BoolLiteral:
 		return e.Value, nil
 	case *DurationLiteral:
-		return time.ParseDuration(e.Value)
+		return time.ParseDuration(string(e.Value))
 	case *VarExpression:
-		val, ok := d.vars[e.Name]
+		val, ok := d.vars[string(e.Name)]
 		if !ok {
-			return nil, fmt.Errorf("variable %q is not defined", e.Name)
+			return nil, fmt.Errorf("variable %q is not defined", string(e.Name))
 		}
 		return val, nil
 	case *EnvExpression:
-		val, found := os.LookupEnv(e.Name.Value)
+		val, found := os.LookupEnv(string(e.Name.Value))
 		if !found {
 			if e.DefaultValue != nil {
-				return e.DefaultValue.Value, nil
+				return string(e.DefaultValue.Value), nil
 			}
-			return nil, fmt.Errorf("environment variable %q not set", e.Name.Value)
+			return nil, fmt.Errorf("environment variable %q not set", string(e.Name.Value))
 		}
 		return val, nil
 	case *ListLiteral:
@@ -420,7 +420,7 @@ func (d *internalDecoder) decodeMapLiteralToMap(ml *MapLiteral) (map[string]inte
 		if err != nil {
 			return nil, err
 		}
-		m[assign.Name.Value] = val
+		m[string(assign.Name.Value)] = val
 	}
 	return m, nil
 }
@@ -434,27 +434,28 @@ func (d *internalDecoder) decodeBlockToMap(body *RootNode) (map[string]interface
 			if err != nil {
 				return nil, err
 			}
-			m[s.Name.Value] = val
+			m[string(s.Name.Value)] = val
 		case *BlockStatement:
 			nestedMap, err := d.decodeBlockToMap(s.Body)
 			if err != nil {
 				return nil, err
 			}
-			m[s.Name.Value] = nestedMap
+			m[string(s.Name.Value)] = nestedMap
 		}
 	}
 	return m, nil
 }
 
-func findFieldAndTag(structVal reflect.Value, name string) (reflect.Value, wanfTag, bool) {
+func findFieldAndTag(structVal reflect.Value, name []byte) (reflect.Value, wanfTag, bool) {
 	typ := structVal.Type()
 	cachedFields := getOrCacheDecoderFields(typ)
 
-	if f, ok := cachedFields[name]; ok {
+	sName := string(name)
+	if f, ok := cachedFields[sName]; ok {
 		return structVal.Field(f.Index), f.Tag, true
 	}
 
-	lowerName := strings.ToLower(name)
+	lowerName := strings.ToLower(sName)
 	for _, f := range cachedFields {
 		if f.Tag.Name == f.FieldTyp.Name && strings.ToLower(f.FieldTyp.Name) == lowerName {
 			return structVal.Field(f.Index), f.Tag, true
@@ -500,7 +501,7 @@ func (d *internalDecoder) setMapFromList(mapField reflect.Value, listVal interfa
 
 func (d *internalDecoder) decodeMapToStruct(sourceMap map[string]interface{}, targetStruct reflect.Value) error {
 	for key, val := range sourceMap {
-		field, _, ok := findFieldAndTag(targetStruct, key)
+		field, _, ok := findFieldAndTag(targetStruct, []byte(key))
 		if !ok {
 			continue
 		}
@@ -523,9 +524,9 @@ func (d *internalDecoder) decodeMapStringString(body *RootNode, mapField reflect
 		}
 		strVal, ok := val.(string)
 		if !ok {
-			return fmt.Errorf("value for key %q in map must be a string", assign.Name.Value)
+			return fmt.Errorf("value for key %q in map must be a string", string(assign.Name.Value))
 		}
-		mapField.SetMapIndex(reflect.ValueOf(assign.Name.Value), reflect.ValueOf(strVal))
+		mapField.SetMapIndex(reflect.ValueOf(string(assign.Name.Value)), reflect.ValueOf(strVal))
 	}
 	return nil
 }

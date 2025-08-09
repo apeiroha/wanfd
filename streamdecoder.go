@@ -1,9 +1,13 @@
 package wanf
 
 import (
+	"bytes"
 	"fmt"
 	"io"
+	"os"
 	"reflect"
+	"strconv"
+	"time"
 )
 
 // StreamDecoder 从输入流中读取并解码WANF格式的数据.
@@ -92,16 +96,12 @@ func (dec *StreamDecoder) decodeAssignStatement(rv reflect.Value) error {
 	}
 	dec.p.nextToken()
 
-	exprAST := dec.p.parseExpression(LOWEST)
-	if exprAST == nil {
-		return fmt.Errorf("wanf: could not parse expression for key %q", ident.Literal)
-	}
-	val, err := dec.d.evalExpression(exprAST)
+	val, err := dec.evalExpressionOnTheFly()
 	if err != nil {
 		return err
 	}
 
-	field, tag, ok := findFieldAndTag(rv, string(ident.Literal))
+	field, tag, ok := findFieldAndTag(rv, ident.Literal)
 	if !ok {
 		return nil
 	}
@@ -128,7 +128,7 @@ func (dec *StreamDecoder) decodeBlockStatement(rv reflect.Value) error {
 	}
 	dec.p.nextToken()
 
-	field, _, ok := findFieldAndTag(rv, string(blockName))
+	field, _, ok := findFieldAndTag(rv, blockName)
 	if !ok {
 		return dec.skipBlock()
 	}
@@ -160,6 +160,159 @@ func (dec *StreamDecoder) decodeBlockStatement(rv reflect.Value) error {
 		return fmt.Errorf("wanf: expected '}' to close block %q on line %d", blockName, dec.p.curToken.Line)
 	}
 	return nil
+}
+
+// evalExpressionOnTheFly evaluates an expression by consuming tokens directly
+// from the parser, without building an expression AST.
+func (dec *StreamDecoder) evalExpressionOnTheFly() (interface{}, error) {
+	switch dec.p.curToken.Type {
+	case INT:
+		return strconv.ParseInt(string(dec.p.curToken.Literal), 0, 64)
+	case FLOAT:
+		return strconv.ParseFloat(string(dec.p.curToken.Literal), 64)
+	case STRING:
+		return string(dec.p.curToken.Literal), nil
+	case BOOL:
+		return strconv.ParseBool(string(dec.p.curToken.Literal))
+	case DUR:
+		return time.ParseDuration(string(dec.p.curToken.Literal))
+	case IDENT:
+		// This can only be an `env()` call in this context.
+		if bytes.Equal(dec.p.curToken.Literal, []byte("env")) {
+			return dec.evalEnvExpressionOnTheFly()
+		}
+	case LBRACK:
+		return dec.decodeListLiteralOnTheFly()
+	case LBRACE:
+		// This could be a block literal (like in a list) or a map literal `{[...`
+		if dec.p.peekTokenIs(LBRACK) {
+			return dec.decodeMapLiteralOnTheFly()
+		}
+		return dec.decodeBlockLiteralOnTheFly()
+	}
+	return nil, fmt.Errorf("wanf: unexpected token %s in expression", dec.p.curToken.Type)
+}
+
+func (dec *StreamDecoder) decodeListLiteralOnTheFly() (interface{}, error) {
+	var list []interface{}
+	dec.p.nextToken() // consume '['
+
+	for !dec.p.curTokenIs(RBRACK) && !dec.p.curTokenIs(EOF) {
+		val, err := dec.evalExpressionOnTheFly()
+		if err != nil {
+			return nil, err
+		}
+		list = append(list, val)
+		dec.p.nextToken()
+
+		if dec.p.curTokenIs(COMMA) {
+			dec.p.nextToken() // consume comma
+		} else if !dec.p.curTokenIs(RBRACK) {
+			return nil, fmt.Errorf("wanf: expected comma or ']' in list literal")
+		}
+	}
+	return list, nil
+}
+
+func (dec *StreamDecoder) decodeBlockLiteralOnTheFly() (interface{}, error) {
+	m := make(map[string]interface{})
+	dec.p.nextToken() // consume '{'
+
+	for !dec.p.curTokenIs(RBRACE) && !dec.p.curTokenIs(EOF) {
+		if dec.p.curTokenIs(COMMENT) || dec.p.curTokenIs(SEMICOLON) {
+			dec.p.nextToken()
+			continue
+		}
+		if !dec.p.curTokenIs(IDENT) {
+			return nil, fmt.Errorf("wanf: expected identifier as key in block literal")
+		}
+		key := string(dec.p.curToken.Literal)
+
+		if !dec.p.expectPeek(ASSIGN) {
+			return nil, fmt.Errorf("wanf: expected '=' after key in block literal")
+		}
+		dec.p.nextToken() // consume value token
+
+		val, err := dec.evalExpressionOnTheFly()
+		if err != nil {
+			return nil, err
+		}
+		m[key] = val
+		dec.p.nextToken()
+	}
+	return m, nil
+}
+
+func (dec *StreamDecoder) decodeMapLiteralOnTheFly() (interface{}, error) {
+	m := make(map[string]interface{})
+	dec.p.nextToken() // consume '{'
+	dec.p.nextToken() // consume '['
+
+	for !dec.p.curTokenIs(RBRACK) && !dec.p.curTokenIs(EOF) {
+		if !dec.p.curTokenIs(IDENT) {
+			return nil, fmt.Errorf("wanf: expected identifier as key in map literal")
+		}
+		key := string(dec.p.curToken.Literal)
+		if !dec.p.expectPeek(ASSIGN) {
+			return nil, fmt.Errorf("wanf: expected '=' after key in map literal")
+		}
+		dec.p.nextToken() // consume value token
+		val, err := dec.evalExpressionOnTheFly()
+		if err != nil {
+			return nil, err
+		}
+		m[key] = val
+		dec.p.nextToken()
+
+		if dec.p.curTokenIs(COMMA) {
+			dec.p.nextToken()
+		} else if !dec.p.curTokenIs(RBRACK) {
+			return nil, fmt.Errorf("wanf: expected comma or ']' in map literal")
+		}
+	}
+	dec.p.nextToken() // consume ']'
+	if !dec.p.curTokenIs(RBRACE) {
+		return nil, fmt.Errorf("wanf: expected '}' to close map literal")
+	}
+	return m, nil
+}
+
+func (dec *StreamDecoder) evalEnvExpressionOnTheFly() (interface{}, error) {
+	if !dec.p.expectPeek(LPAREN) {
+		return nil, fmt.Errorf("wanf: expected '(' after env")
+	}
+	dec.p.nextToken() // consume '('
+
+	if !dec.p.curTokenIs(STRING) {
+		return nil, fmt.Errorf("wanf: expected string argument for env()")
+	}
+	envVarName := string(dec.p.curToken.Literal)
+
+	// Check for default value
+	if dec.p.peekTokenIs(COMMA) {
+		dec.p.nextToken() // consume ','
+		dec.p.nextToken() // consume default value string token
+		if !dec.p.curTokenIs(STRING) {
+			return nil, fmt.Errorf("wanf: expected string for env() default value")
+		}
+		defaultValue := string(dec.p.curToken.Literal)
+		if val, found := os.LookupEnv(envVarName); found {
+			return val, nil
+		}
+		return defaultValue, nil
+	}
+
+	// No default value
+	if val, found := os.LookupEnv(envVarName); found {
+		return val, nil
+	}
+
+	if !dec.p.peekTokenIs(RPAREN) {
+		return nil, fmt.Errorf("wanf: expected ')' after env() call")
+	}
+	dec.p.nextToken() // consume ')'
+
+	return nil, fmt.Errorf("wanf: environment variable %q not set and no default provided", envVarName)
 }
 
 // skipBlock consumes tokens until the matching RBRACE is found.

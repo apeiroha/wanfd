@@ -109,9 +109,9 @@ func (a *astAnalyzer) collect(root Node) {
 
 		switch n := node.(type) {
 		case *BlockStatement:
-			a.blockCounts[n.Name.Value]++
+			a.blockCounts[string(n.Name.Value)]++
 		case *VarStatement:
-			a.declaredVars[n.Name.Value] = n
+			a.declaredVars[string(n.Name.Value)] = n
 		}
 
 		switch n := node.(type) {
@@ -154,16 +154,16 @@ func (a *astAnalyzer) check(node Node) Node {
 		if n.Body != nil {
 			n.Body = a.check(n.Body).(*RootNode)
 		}
-		if n.Label != nil && a.blockCounts[n.Name.Value] == 1 {
+		if n.Label != nil && a.blockCounts[string(n.Name.Value)] == 1 {
 			err := LintError{
 				Line:      n.Token.Line,
 				Column:    n.Token.Column,
 				EndLine:   n.Token.Line,
 				EndColumn: n.Token.Column + len(n.Name.Value),
-				Message:   fmt.Sprintf("block %q is defined only once, the label %q is redundant", n.Name.Value, n.Label.Value),
+				Message:   fmt.Sprintf("block %q is defined only once, the label %q is redundant", string(n.Name.Value), string(n.Label.Value)),
 				Level:     ErrorLevelFmt,
 				Type:      ErrRedundantLabel,
-				Args:      []string{n.Name.Value, n.Label.Value},
+				Args:      []string{string(n.Name.Value), string(n.Label.Value)},
 			}
 			a.errors = append(a.errors, err)
 			return &BlockStatement{
@@ -201,10 +201,10 @@ func (a *astAnalyzer) check(node Node) Node {
 		}
 		return n
 	case *VarExpression:
-		a.usedVars[n.Name] = true
+		a.usedVars[string(n.Name)] = true
 		return n
 	case *StringLiteral:
-		matches := varRegex.FindAllStringSubmatch(n.Value, -1)
+		matches := varRegex.FindAllStringSubmatch(string(n.Value), -1)
 		for _, match := range matches {
 			if len(match) > 1 {
 				a.usedVars[match[1]] = true

@@ -12,19 +12,23 @@ import (
 var dot = []byte{'.'}
 
 // streamLexer 是一个从 io.Reader 读取数据的词法分析器.
+// 它使用 bufio.Reader 来实现高效的预读(peek)功能, 并使用两个交替的 bytes.Buffer 来实现零分配的词法单元字面量生成.
 type streamLexer struct {
-	r          *bufio.Reader
-	ch         byte
-	line       int
-	column     int
-	literalBuf bytes.Buffer
+	r       *bufio.Reader
+	ch      byte
+	line    int
+	column  int
+	bufA    bytes.Buffer
+	bufB    bytes.Buffer
+	useBufA bool
 }
 
 // newStreamLexer creates a new stream-based lexer.
 func newStreamLexer(r io.Reader) *streamLexer {
 	l := &streamLexer{
-		r:    bufio.NewReader(r),
-		line: 1,
+		r:       bufio.NewReader(r),
+		line:    1,
+		useBufA: true,
 	}
 	l.readChar()
 	return l
@@ -153,20 +157,33 @@ func (l *streamLexer) NextToken() Token {
 	return tok
 }
 
+const defaultBufferSize = 64
+
+func (l *streamLexer) activeBuffer() *bytes.Buffer {
+	var buf *bytes.Buffer
+	if l.useBufA {
+		buf = &l.bufA
+	} else {
+		buf = &l.bufB
+	}
+	l.useBufA = !l.useBufA
+	buf.Reset()
+	buf.Grow(defaultBufferSize)
+	return buf
+}
+
 func (l *streamLexer) readDurationSuffix(prefix []byte) []byte {
-	l.literalBuf.Reset()
-	l.literalBuf.Write(prefix)
+	buf := l.activeBuffer()
+	buf.Write(prefix)
 	if l.ch == 'm' || l.ch == 'u' || l.ch == 'n' {
 		if l.peekChar() == 's' {
-			l.literalBuf.WriteByte(l.ch)
+			buf.WriteByte(l.ch)
 			l.readChar()
 		}
 	}
-	l.literalBuf.WriteByte(l.ch)
+	buf.WriteByte(l.ch)
 	l.readChar()
-	c := make([]byte, l.literalBuf.Len())
-	copy(c, l.literalBuf.Bytes())
-	return c
+	return buf.Bytes()
 }
 
 func (l *streamLexer) skipWhitespace() {
@@ -180,32 +197,30 @@ func (l *streamLexer) skipWhitespace() {
 }
 
 func (l *streamLexer) readSingleLineComment() []byte {
-	l.literalBuf.Reset()
+	buf := l.activeBuffer()
 	for l.ch != '\n' && l.ch != 0 {
-		l.literalBuf.WriteByte(l.ch)
+		buf.WriteByte(l.ch)
 		l.readChar()
 	}
-	c := make([]byte, l.literalBuf.Len())
-	copy(c, l.literalBuf.Bytes())
-	return c
+	return buf.Bytes()
 }
 
 func (l *streamLexer) readMultiLineComment() ([]byte, bool) {
-	l.literalBuf.Reset()
+	buf := l.activeBuffer()
 	startLine, startCol := l.line, l.column
-	l.literalBuf.WriteByte(l.ch)
+	buf.WriteByte(l.ch)
 	l.readChar()
-	l.literalBuf.WriteByte(l.ch)
+	buf.WriteByte(l.ch)
 	l.readChar()
 	for {
 		if l.ch == 0 {
 			l.line, l.column = startLine, startCol
-			return l.literalBuf.Bytes(), false
+			return buf.Bytes(), false
 		}
 		if l.ch == '*' && l.peekChar() == '/' {
-			l.literalBuf.WriteByte(l.ch)
+			buf.WriteByte(l.ch)
 			l.readChar()
-			l.literalBuf.WriteByte(l.ch)
+			buf.WriteByte(l.ch)
 			l.readChar()
 			break
 		}
@@ -213,63 +228,53 @@ func (l *streamLexer) readMultiLineComment() ([]byte, bool) {
 			l.line++
 			l.column = 0
 		}
-		l.literalBuf.WriteByte(l.ch)
+		buf.WriteByte(l.ch)
 		l.readChar()
 	}
-	c := make([]byte, l.literalBuf.Len())
-	copy(c, l.literalBuf.Bytes())
-	return c, true
+	return buf.Bytes(), true
 }
 
 func (l *streamLexer) readIdentifier() []byte {
-	l.literalBuf.Reset()
+	buf := l.activeBuffer()
 	for isIdentifierStart(l.ch) || unicode.IsDigit(rune(l.ch)) {
-		l.literalBuf.WriteByte(l.ch)
+		buf.WriteByte(l.ch)
 		l.readChar()
 	}
-	c := make([]byte, l.literalBuf.Len())
-	copy(c, l.literalBuf.Bytes())
-	return c
+	return buf.Bytes()
 }
 
 func (l *streamLexer) readNumber() []byte {
-	l.literalBuf.Reset()
+	buf := l.activeBuffer()
 	isFloat := false
 	for unicode.IsDigit(rune(l.ch)) || (l.ch == '.' && !isFloat) {
 		if l.ch == '.' {
 			isFloat = true
 		}
-		l.literalBuf.WriteByte(l.ch)
+		buf.WriteByte(l.ch)
 		l.readChar()
 	}
-	c := make([]byte, l.literalBuf.Len())
-	copy(c, l.literalBuf.Bytes())
-	return c
+	return buf.Bytes()
 }
 
 func (l *streamLexer) readString(quote byte) []byte {
-	l.literalBuf.Reset()
+	buf := l.activeBuffer()
 	l.readChar()
 	for {
 		if l.ch == quote || l.ch == 0 {
 			break
 		}
-		l.literalBuf.WriteByte(l.ch)
+		buf.WriteByte(l.ch)
 		l.readChar()
 	}
 	l.readChar()
-	c := make([]byte, l.literalBuf.Len())
-	copy(c, l.literalBuf.Bytes())
-	return c
+	return buf.Bytes()
 }
 
 func (l *streamLexer) readUntilEndOfLine() []byte {
-	l.literalBuf.Reset()
+	buf := l.activeBuffer()
 	for l.ch != '\n' && l.ch != '\r' && l.ch != 0 {
-		l.literalBuf.WriteByte(l.ch)
+		buf.WriteByte(l.ch)
 		l.readChar()
 	}
-	c := make([]byte, l.literalBuf.Len())
-	copy(c, l.literalBuf.Bytes())
-	return c
+	return buf.Bytes()
 }

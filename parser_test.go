@@ -1,6 +1,7 @@
 package wanf
 
 import (
+	"bytes"
 	"testing"
 )
 
@@ -36,7 +37,7 @@ server "main" {
 	if !ok {
 		t.Fatalf("program.Statements[0] is not *VarStatement. got=%T", program.Statements[0])
 	}
-	if varStmt.Name.Value != "version" {
+	if !bytes.Equal(varStmt.Name.Value, []byte("version")) {
 		t.Fatalf("varStmt.Name.Value not 'version'. got=%s", varStmt.Name.Value)
 	}
 	if _, ok := varStmt.Value.(*FloatLiteral); !ok {
@@ -48,7 +49,7 @@ server "main" {
 	if !ok {
 		t.Fatalf("program.Statements[1] is not *ImportStatement. got=%T", program.Statements[1])
 	}
-	if importStmt.Path.Value != "common.wanf" {
+	if !bytes.Equal(importStmt.Path.Value, []byte("common.wanf")) {
 		t.Fatalf("importStmt.Path.Value not 'common.wanf'. got=%s", importStmt.Path.Value)
 	}
 
@@ -57,7 +58,7 @@ server "main" {
 	if !ok {
 		t.Fatalf("program.Statements[2] is not *BlockStatement. got=%T", program.Statements[2])
 	}
-	if blockStmt1.Name.Value != "app" {
+	if !bytes.Equal(blockStmt1.Name.Value, []byte("app")) {
 		t.Fatalf("blockStmt1.Name.Value not 'app'. got=%s", blockStmt1.Name.Value)
 	}
 	if blockStmt1.Label != nil {
@@ -69,10 +70,10 @@ server "main" {
 	if !ok {
 		t.Fatalf("program.Statements[3] is not *BlockStatement. got=%T", program.Statements[3])
 	}
-	if blockStmt2.Name.Value != "server" {
+	if !bytes.Equal(blockStmt2.Name.Value, []byte("server")) {
 		t.Fatalf("blockStmt2.Name.Value not 'server'. got=%s", blockStmt2.Name.Value)
 	}
-	if blockStmt2.Label == nil || blockStmt2.Label.Value != "main" {
+	if blockStmt2.Label == nil || !bytes.Equal(blockStmt2.Label.Value, []byte("main")) {
 		t.Fatalf("blockStmt2.Label.Value not 'main'. got=%v", blockStmt2.Label)
 	}
 

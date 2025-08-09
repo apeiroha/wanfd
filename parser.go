@@ -197,7 +197,7 @@ func (p *Parser) parseStatement() Statement {
 
 func (p *Parser) parseAssignStatement(leading []*Comment) *AssignStatement {
 	stmt := &AssignStatement{Token: p.curToken, LeadingComments: leading}
-	stmt.Name = &Identifier{Token: p.curToken, Value: string(p.curToken.Literal)}
+	stmt.Name = &Identifier{Token: p.curToken, Value: p.curToken.Literal}
 	p.nextToken()
 	p.nextToken()
 	stmt.Value = p.parseExpression(LOWEST)
@@ -206,7 +206,7 @@ func (p *Parser) parseAssignStatement(leading []*Comment) *AssignStatement {
 
 func (p *Parser) parseBlockStatement(leading []*Comment) *BlockStatement {
 	stmt := &BlockStatement{Token: p.curToken, LeadingComments: leading}
-	stmt.Name = &Identifier{Token: p.curToken, Value: string(p.curToken.Literal)}
+	stmt.Name = &Identifier{Token: p.curToken, Value: p.curToken.Literal}
 	if p.peekTokenIs(STRING) {
 		p.nextToken()
 		stmt.Label = p.parseStringLiteral().(*StringLiteral)
@@ -248,7 +248,7 @@ func (p *Parser) parseVarStatement(leading []*Comment) *VarStatement {
 	if !p.expectPeek(IDENT) {
 		return nil
 	}
-	stmt.Name = &Identifier{Token: p.curToken, Value: string(p.curToken.Literal)}
+	stmt.Name = &Identifier{Token: p.curToken, Value: p.curToken.Literal}
 	if !p.expectPeek(ASSIGN) {
 		return nil
 	}
@@ -282,7 +282,7 @@ func (p *Parser) parseIdentifier() Expression {
 	if bytes.Equal(p.curToken.Literal, envLiteral) && p.peekTokenIs(LPAREN) {
 		return p.parseEnvExpression()
 	}
-	return &Identifier{Token: p.curToken, Value: string(p.curToken.Literal)}
+	return &Identifier{Token: p.curToken, Value: p.curToken.Literal}
 }
 
 func (p *Parser) parseIntegerLiteral() Expression {
@@ -308,7 +308,7 @@ func (p *Parser) parseFloatLiteral() Expression {
 }
 
 func (p *Parser) parseStringLiteral() Expression {
-	return &StringLiteral{Token: p.curToken, Value: string(p.curToken.Literal)}
+	return &StringLiteral{Token: p.curToken, Value: p.curToken.Literal}
 }
 
 func (p *Parser) parseBooleanLiteral() Expression {
@@ -323,7 +323,7 @@ func (p *Parser) parseBooleanLiteral() Expression {
 }
 
 func (p *Parser) parseDurationLiteral() Expression {
-	return &DurationLiteral{Token: p.curToken, Value: string(p.curToken.Literal)}
+	return &DurationLiteral{Token: p.curToken, Value: p.curToken.Literal}
 }
 
 func (p *Parser) parseListLiteral() Expression {
@@ -412,7 +412,7 @@ func (p *Parser) parseVarExpression() Expression {
 	if !p.expectPeek(IDENT) {
 		return nil
 	}
-	expr.Name = string(p.curToken.Literal)
+	expr.Name = p.curToken.Literal
 	if !p.expectPeek(RBRACE) {
 		return nil
 	}
