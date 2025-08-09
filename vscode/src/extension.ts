@@ -69,10 +69,11 @@ class WanfFormattingProvider implements vscode.DocumentFormattingEditProvider {
 			const config = vscode.workspace.getConfiguration('wanf');
 			const noSort = config.get<boolean>('format.noSort', false);
 
-			let command = `wanflint fmt ${document.fileName}`;
+			let command = "wanflint fmt";
 			if (noSort) {
 				command += " --nosort";
 			}
+			command += ` ${document.fileName}`;
 
 			console.log(`[wanf-format] Executing command: ${command}`);
 			await exec(command);
