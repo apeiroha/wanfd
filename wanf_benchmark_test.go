@@ -2,6 +2,7 @@ package wanf
 
 import (
 	"bytes"
+	"io"
 	"os"
 	"testing"
 )
@@ -130,5 +131,30 @@ func BenchmarkEncode(b *testing.B) {
 
 	for i := 0; i < b.N; i++ {
 		_, _ = Marshal(&config)
+	}
+}
+
+func BenchmarkStreamEncode(b *testing.B) {
+	if benchmarkWanfData == nil {
+		b.Skip("Cannot read benchmark data file")
+	}
+	// Create a representative config struct by decoding the benchmark file once.
+	var config benchmarkConfig
+	dec, err := NewDecoder(bytes.NewReader(benchmarkWanfData), WithBasePath("testfile"))
+	if err != nil {
+		b.Fatalf("Failed to create decoder for benchmark setup: %v", err)
+	}
+	err = dec.Decode(&config)
+	if err != nil {
+		b.Fatalf("Failed to decode benchmark data for encoder setup: %v", err)
+	}
+
+	b.ResetTimer()
+	b.ReportAllocs()
+
+	for i := 0; i < b.N; i++ {
+		// Use io.Discard to benchmark the streaming performance without writing to a buffer.
+		enc := NewStreamEncoder(io.Discard)
+		_ = enc.Encode(&config) // Using default options for benchmark
 	}
 }
