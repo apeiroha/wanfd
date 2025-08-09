@@ -1,6 +1,9 @@
 package wanf
 
-import "fmt"
+import (
+	"bytes"
+	"fmt"
+)
 
 type TokenType string
 
@@ -40,19 +43,20 @@ const (
 	ILLEGAL_COMMENT TokenType = "ILLEGAL_COMMENT"
 )
 
-var keywordMap = map[string]TokenType{
-	"import": IMPORT,
-	"var":    VAR,
-	"true":   BOOL,
-	"false":  BOOL,
-}
-
-// LookupIdentifier 检查 ident 是否是关键字
+// LookupIdentifier 检查 ident 是否是关键字.
+// 使用 bytes.Equal 可以实现零内存分配的关键字匹配.
 func LookupIdentifier(ident []byte) TokenType {
-	// 为了在map中查找,这里存在一个从[]byte到string的转换,会产生一次内存分配.
-	// 但这是必要的,因为直接使用[]byte作为map的键是不安全的,除非能保证它们不会被修改.
-	if tok, ok := keywordMap[string(ident)]; ok {
-		return tok
+	if bytes.Equal(ident, []byte("import")) {
+		return IMPORT
+	}
+	if bytes.Equal(ident, []byte("var")) {
+		return VAR
+	}
+	if bytes.Equal(ident, []byte("true")) {
+		return BOOL
+	}
+	if bytes.Equal(ident, []byte("false")) {
+		return BOOL
 	}
 	return IDENT
 }

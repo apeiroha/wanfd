@@ -5,6 +5,14 @@ import (
 	"unicode"
 )
 
+var singleCharByteSlices [256][]byte
+
+func init() {
+	for i := 0; i < 256; i++ {
+		singleCharByteSlices[i] = []byte{byte(i)}
+	}
+}
+
 type Lexer struct {
 	input        []byte // 使用 []byte 避免复制
 	position     int
@@ -230,7 +238,7 @@ func (l *Lexer) peekChar() byte {
 	return l.input[l.readPosition]
 }
 func (l *Lexer) newToken(tokenType TokenType, ch byte, line, column int) Token {
-	return Token{Type: tokenType, Literal: []byte{ch}, Line: line, Column: column}
+	return Token{Type: tokenType, Literal: singleCharByteSlices[ch], Line: line, Column: column}
 }
 func isIdentifierStart(ch byte) bool {
 	return (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || ch == '_'
