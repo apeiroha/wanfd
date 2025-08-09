@@ -137,7 +137,7 @@ func (l *streamLexer) NextToken() Token {
 				tok.Type = DUR
 				tok.Literal = l.readDurationSuffix(literal)
 			} else {
-				if bytes.Contains(literal, []byte{'.'}) {
+				if bytes.Contains(literal, dot) {
 					tok.Type = FLOAT
 				} else {
 					tok.Type = INT
@@ -157,6 +157,8 @@ func (l *streamLexer) NextToken() Token {
 
 // activeBuffer 返回当前用于构建字面量的缓冲区, 并在下次调用时切换到另一个.
 // 这保证了在支持解析器两步预读的同时, 无需为每个词法单元分配新的内存.
+const defaultBufferSize = 64
+
 func (l *streamLexer) activeBuffer() *bytes.Buffer {
 	var buf *bytes.Buffer
 	if l.useBufA {
@@ -166,6 +168,7 @@ func (l *streamLexer) activeBuffer() *bytes.Buffer {
 	}
 	l.useBufA = !l.useBufA // 为下一个词法单元切换缓冲区
 	buf.Reset()
+	buf.Grow(defaultBufferSize) // 预分配容量以减少后续可能的内存分配
 	return buf
 }
 
