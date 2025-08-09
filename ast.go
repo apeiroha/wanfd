@@ -241,8 +241,7 @@ func (vs *VarStatement) Format(w *bytes.Buffer, indent string, opts FormatOption
 		w.WriteString("\n")
 	}
 	w.WriteString(indent)
-	w.Write(vs.Token.Literal)
-	w.WriteString(" ")
+	w.WriteString(vs.TokenLiteral() + " ")
 	vs.Name.Format(w, indent, opts)
 	w.WriteString(" = ")
 	if vs.Value != nil {
@@ -281,8 +280,7 @@ func (is *ImportStatement) Format(w *bytes.Buffer, indent string, opts FormatOpt
 		w.WriteString("\n")
 	}
 	w.WriteString(indent)
-	w.Write(is.Token.Literal)
-	w.WriteString(" ")
+	w.WriteString(is.TokenLiteral() + " ")
 	is.Path.Format(w, indent, opts)
 	if is.LineComment != nil {
 		w.WriteString(" ")

@@ -410,7 +410,7 @@ func (d *internalDecoder) evalExpression(expr Expression) (interface{}, error) {
 }
 
 func (d *internalDecoder) decodeMapLiteralToMap(ml *MapLiteral) (map[string]interface{}, error) {
-	m := make(map[string]interface{})
+	m := make(map[string]interface{}, len(ml.Elements))
 	for _, stmt := range ml.Elements {
 		assign, ok := stmt.(*AssignStatement)
 		if !ok {
@@ -426,7 +426,7 @@ func (d *internalDecoder) decodeMapLiteralToMap(ml *MapLiteral) (map[string]inte
 }
 
 func (d *internalDecoder) decodeBlockToMap(body *RootNode) (map[string]interface{}, error) {
-	m := make(map[string]interface{})
+	m := make(map[string]interface{}, len(body.Statements))
 	for _, stmt := range body.Statements {
 		switch s := stmt.(type) {
 		case *AssignStatement:

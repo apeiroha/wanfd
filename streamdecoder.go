@@ -119,7 +119,7 @@ func (dec *StreamDecoder) decodeBlockStatement(rv reflect.Value) error {
 
 	var label string
 	if dec.p.curTokenIs(STRING) {
-		label = string(dec.p.curToken.Literal)
+		label = BytesToString(dec.p.curToken.Literal)
 		dec.p.nextToken()
 	}
 
@@ -167,15 +167,15 @@ func (dec *StreamDecoder) decodeBlockStatement(rv reflect.Value) error {
 func (dec *StreamDecoder) evalExpressionOnTheFly() (interface{}, error) {
 	switch dec.p.curToken.Type {
 	case INT:
-		return strconv.ParseInt(string(dec.p.curToken.Literal), 0, 64)
+		return strconv.ParseInt(BytesToString(dec.p.curToken.Literal), 0, 64)
 	case FLOAT:
-		return strconv.ParseFloat(string(dec.p.curToken.Literal), 64)
+		return strconv.ParseFloat(BytesToString(dec.p.curToken.Literal), 64)
 	case STRING:
-		return string(dec.p.curToken.Literal), nil
+		return BytesToString(dec.p.curToken.Literal), nil
 	case BOOL:
-		return strconv.ParseBool(string(dec.p.curToken.Literal))
+		return strconv.ParseBool(BytesToString(dec.p.curToken.Literal))
 	case DUR:
-		return time.ParseDuration(string(dec.p.curToken.Literal))
+		return time.ParseDuration(BytesToString(dec.p.curToken.Literal))
 	case IDENT:
 		// This can only be an `env()` call in this context.
 		if bytes.Equal(dec.p.curToken.Literal, []byte("env")) {
@@ -226,7 +226,7 @@ func (dec *StreamDecoder) decodeBlockLiteralOnTheFly() (interface{}, error) {
 		if !dec.p.curTokenIs(IDENT) {
 			return nil, fmt.Errorf("wanf: expected identifier as key in block literal")
 		}
-		key := string(dec.p.curToken.Literal)
+		key := BytesToString(dec.p.curToken.Literal)
 
 		if !dec.p.expectPeek(ASSIGN) {
 			return nil, fmt.Errorf("wanf: expected '=' after key in block literal")
@@ -252,7 +252,7 @@ func (dec *StreamDecoder) decodeMapLiteralOnTheFly() (interface{}, error) {
 		if !dec.p.curTokenIs(IDENT) {
 			return nil, fmt.Errorf("wanf: expected identifier as key in map literal")
 		}
-		key := string(dec.p.curToken.Literal)
+		key := BytesToString(dec.p.curToken.Literal)
 		if !dec.p.expectPeek(ASSIGN) {
 			return nil, fmt.Errorf("wanf: expected '=' after key in map literal")
 		}
@@ -286,7 +286,7 @@ func (dec *StreamDecoder) evalEnvExpressionOnTheFly() (interface{}, error) {
 	if !dec.p.curTokenIs(STRING) {
 		return nil, fmt.Errorf("wanf: expected string argument for env()")
 	}
-	envVarName := string(dec.p.curToken.Literal)
+	envVarName := BytesToString(dec.p.curToken.Literal)
 
 	// Check for default value
 	if dec.p.peekTokenIs(COMMA) {
@@ -295,7 +295,7 @@ func (dec *StreamDecoder) evalEnvExpressionOnTheFly() (interface{}, error) {
 		if !dec.p.curTokenIs(STRING) {
 			return nil, fmt.Errorf("wanf: expected string for env() default value")
 		}
-		defaultValue := string(dec.p.curToken.Literal)
+		defaultValue := BytesToString(dec.p.curToken.Literal)
 		if val, found := os.LookupEnv(envVarName); found {
 			return val, nil
 		}

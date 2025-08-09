@@ -153,14 +153,13 @@ func (p *Parser) parseStatement() Statement {
 
 	if stmt == nil {
 		if p.LintMode {
-			literalStr := string(p.curToken.Literal)
-			message := fmt.Sprintf("unexpected token %s (%s)", p.curToken.Type, literalStr)
+			message := fmt.Sprintf("unexpected token %s (%s)", p.curToken.Type, string(p.curToken.Literal))
 			if p.curToken.Type == ILLEGAL {
-				message = literalStr
+				message = string(p.curToken.Literal)
 			}
 			var args []string
 			if p.curToken.Type != ILLEGAL {
-				args = []string{string(p.curToken.Type), literalStr}
+				args = []string{string(p.curToken.Type), string(p.curToken.Literal)}
 			}
 			p.lintErrors = append(p.lintErrors, LintError{
 				Line:      p.curToken.Line,
