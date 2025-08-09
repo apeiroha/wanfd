@@ -1,0 +1,52 @@
+
+application {
+	name = "PhoenixApp"
+	version = 1.2
+	debug_mode = true
+	max_concurrent_jobs = 100
+	shutdown_timeout = 30s
+	allowed_origins = [
+		"https://app.example.com",
+		"https://api.example.com"
+	]
+}
+
+logging {
+	level = "info"
+	format_template = `[${level}] ${timestamp}: ${message}
+    Caller: ${caller}
+    `
+}
+
+server "http_api" {
+	address = ":8080"
+	protocol = "http"
+	read_timeout = 5s
+}
+
+server "grpc_api" {
+	address = ":8081"
+	protocol = "grpc"
+	max_streams = 200
+}
+
+feature_flags = [
+	"realtime_dashboard",
+	"extended_api",
+	"beta_features",
+]
+middleware = [
+	{
+		id = "request_logger"
+		enabled = true
+	},
+	{
+		id = "authentication"
+		enabled = true
+		jwt_issuer = "wanf_token_service"
+	},
+	{
+		id = "rate_limiter"
+		enabled = false
+	},
+]

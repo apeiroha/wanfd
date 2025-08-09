@@ -9,6 +9,7 @@ import (
 
 // Benchmark data - a reasonably complex wanf file content.
 var benchmarkWanfData, _ = os.ReadFile("testfile/example.wanf")
+var benchmarkStreamWanfData, _ = os.ReadFile("testfile/benchmark_stream.wanf")
 
 // BenchmarkLexer measures the performance of tokenizing a wanf file.
 func BenchmarkLexer(b *testing.B) {
@@ -107,19 +108,18 @@ func BenchmarkDecode(b *testing.B) {
 
 // BenchmarkStreamDecode 测试流式解码器的性能.
 func BenchmarkStreamDecode(b *testing.B) {
-	if benchmarkWanfData == nil {
-		b.Skip("Cannot read benchmark data file")
+	if benchmarkStreamWanfData == nil {
+		b.Skip("Cannot read stream benchmark data file")
 	}
 	b.ReportAllocs()
 	b.ResetTimer()
 
-	reader := bytes.NewReader(benchmarkWanfData)
+	reader := bytes.NewReader(benchmarkStreamWanfData)
 
 	for i := 0; i < b.N; i++ {
 		var cfg benchmarkConfig
 		reader.Seek(0, io.SeekStart)
-		// Provide the base path for resolving the import statement in the benchmark file.
-		dec, err := NewStreamDecoder(reader, WithBasePath("testfile"))
+		dec, err := NewStreamDecoder(reader)
 		if err != nil {
 			b.Fatalf("NewStreamDecoder failed during benchmark: %v", err)
 		}
