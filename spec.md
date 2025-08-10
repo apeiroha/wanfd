@@ -136,6 +136,7 @@ host = "localhost"; port = 8080
 
 *   **声明**: `var identifier = value`
 *   **引用**: `${identifier}`
+*   **流式解码器限制**: 为了实现最高的性能和最低的内存占用，`StreamDecoder`（流式解码器）**不支持** `var` 语句。如果在流式模式下遇到 `var` 声明，解码器将报告一个错误。
 
 ```go
 // WANF 配置
@@ -171,6 +172,7 @@ database {
 *   **声明**: `import "path/to/another.wanf"`
 *   **路径规则**: 路径是相对于当前文件的。
 *   **作用域规则**: 被导入文件中的变量不会污染导入它的文件。
+*   **流式解码器限制**: 为了实现最高的性能和最低的内存占用，`StreamDecoder`（流式解码器）**不支持** `import` 语句。如果在流式模式下遇到 `import` 声明，解码器将报告一个错误。
 
 ```go
 // main.wanf

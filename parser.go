@@ -61,7 +61,7 @@ func (e LintError) Error() string {
 }
 
 type Parser struct {
-	l              *Lexer
+	l              lexer
 	errors         []LintError
 	curToken       Token
 	peekToken      Token
@@ -70,7 +70,7 @@ type Parser struct {
 	lintErrors     []LintError
 }
 
-func NewParser(l *Lexer) *Parser {
+func NewParser(l lexer) *Parser {
 	p := &Parser{
 		l:          l,
 		errors:     []LintError{},
@@ -120,7 +120,7 @@ func (p *Parser) ParseProgram() *RootNode {
 func (p *Parser) parseLeadingComments() []*Comment {
 	var comments []*Comment
 	for p.curTokenIs(COMMENT) {
-		comment := &Comment{Token: p.curToken, Text: string(p.curToken.Literal)}
+		comment := &Comment{Token: p.curToken, Text: p.curToken.Literal}
 		comments = append(comments, comment)
 		p.nextToken()
 	}
@@ -180,7 +180,7 @@ func (p *Parser) parseStatement() Statement {
 
 	if p.peekTokenIs(COMMENT) && p.peekToken.Line == p.curToken.Line {
 		p.nextToken()
-		lineComment := &Comment{Token: p.curToken, Text: string(p.curToken.Literal)}
+		lineComment := &Comment{Token: p.curToken, Text: p.curToken.Literal}
 		switch s := stmt.(type) {
 		case *AssignStatement:
 			s.LineComment = lineComment
@@ -197,7 +197,7 @@ func (p *Parser) parseStatement() Statement {
 
 func (p *Parser) parseAssignStatement(leading []*Comment) *AssignStatement {
 	stmt := &AssignStatement{Token: p.curToken, LeadingComments: leading}
-	stmt.Name = &Identifier{Token: p.curToken, Value: string(p.curToken.Literal)}
+	stmt.Name = &Identifier{Token: p.curToken, Value: p.curToken.Literal}
 	p.nextToken()
 	p.nextToken()
 	stmt.Value = p.parseExpression(LOWEST)
@@ -206,7 +206,7 @@ func (p *Parser) parseAssignStatement(leading []*Comment) *AssignStatement {
 
 func (p *Parser) parseBlockStatement(leading []*Comment) *BlockStatement {
 	stmt := &BlockStatement{Token: p.curToken, LeadingComments: leading}
-	stmt.Name = &Identifier{Token: p.curToken, Value: string(p.curToken.Literal)}
+	stmt.Name = &Identifier{Token: p.curToken, Value: p.curToken.Literal}
 	if p.peekTokenIs(STRING) {
 		p.nextToken()
 		stmt.Label = p.parseStringLiteral().(*StringLiteral)
@@ -248,7 +248,7 @@ func (p *Parser) parseVarStatement(leading []*Comment) *VarStatement {
 	if !p.expectPeek(IDENT) {
 		return nil
 	}
-	stmt.Name = &Identifier{Token: p.curToken, Value: string(p.curToken.Literal)}
+	stmt.Name = &Identifier{Token: p.curToken, Value: p.curToken.Literal}
 	if !p.expectPeek(ASSIGN) {
 		return nil
 	}
@@ -282,12 +282,12 @@ func (p *Parser) parseIdentifier() Expression {
 	if bytes.Equal(p.curToken.Literal, envLiteral) && p.peekTokenIs(LPAREN) {
 		return p.parseEnvExpression()
 	}
-	return &Identifier{Token: p.curToken, Value: string(p.curToken.Literal)}
+	return &Identifier{Token: p.curToken, Value: p.curToken.Literal}
 }
 
 func (p *Parser) parseIntegerLiteral() Expression {
 	lit := &IntegerLiteral{Token: p.curToken}
-	value, err := strconv.ParseInt(string(p.curToken.Literal), 0, 64)
+	value, err := strconv.ParseInt(BytesToString(p.curToken.Literal), 0, 64)
 	if err != nil {
 		p.appendError(fmt.Sprintf("could not parse %q as integer", p.curToken.Literal))
 		return nil
@@ -298,7 +298,7 @@ func (p *Parser) parseIntegerLiteral() Expression {
 
 func (p *Parser) parseFloatLiteral() Expression {
 	lit := &FloatLiteral{Token: p.curToken}
-	value, err := strconv.ParseFloat(string(p.curToken.Literal), 64)
+	value, err := strconv.ParseFloat(BytesToString(p.curToken.Literal), 64)
 	if err != nil {
 		p.appendError(fmt.Sprintf("could not parse %q as float", p.curToken.Literal))
 		return nil
@@ -308,12 +308,12 @@ func (p *Parser) parseFloatLiteral() Expression {
 }
 
 func (p *Parser) parseStringLiteral() Expression {
-	return &StringLiteral{Token: p.curToken, Value: string(p.curToken.Literal)}
+	return &StringLiteral{Token: p.curToken, Value: p.curToken.Literal}
 }
 
 func (p *Parser) parseBooleanLiteral() Expression {
 	lit := &BoolLiteral{Token: p.curToken}
-	value, err := strconv.ParseBool(string(p.curToken.Literal))
+	value, err := strconv.ParseBool(BytesToString(p.curToken.Literal))
 	if err != nil {
 		p.appendError(fmt.Sprintf("could not parse %q as boolean", p.curToken.Literal))
 		return nil
@@ -323,7 +323,7 @@ func (p *Parser) parseBooleanLiteral() Expression {
 }
 
 func (p *Parser) parseDurationLiteral() Expression {
-	return &DurationLiteral{Token: p.curToken, Value: string(p.curToken.Literal)}
+	return &DurationLiteral{Token: p.curToken, Value: p.curToken.Literal}
 }
 
 func (p *Parser) parseListLiteral() Expression {
@@ -412,7 +412,7 @@ func (p *Parser) parseVarExpression() Expression {
 	if !p.expectPeek(IDENT) {
 		return nil
 	}
-	expr.Name = string(p.curToken.Literal)
+	expr.Name = p.curToken.Literal
 	if !p.expectPeek(RBRACE) {
 		return nil
 	}

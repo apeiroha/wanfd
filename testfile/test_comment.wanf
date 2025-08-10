@@ -7,7 +7,6 @@ database {
 	// This is a line comment for the block
 	// leading comment for a key
 	host = "localhost" // line comment for a key
-
 	/* another multi-line
        comment */
 	port = 5432

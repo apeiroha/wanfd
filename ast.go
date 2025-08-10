@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"reflect"
 	"sort"
-	"strings"
 	"sync"
 )
 
@@ -37,15 +36,15 @@ type Expression interface {
 // Comment 表示一个注释节点
 type Comment struct {
 	Token Token
-	Text  string
+	Text  []byte
 }
 
 func (c *Comment) expressionNode()      {}
 func (c *Comment) statementNode()       {}
 func (c *Comment) TokenLiteral() string { return string(c.Token.Literal) }
-func (c *Comment) String() string       { return c.Text }
+func (c *Comment) String() string       { return string(c.Text) }
 func (c *Comment) Format(w *bytes.Buffer, indent string, opts FormatOptions) {
-	w.WriteString(c.Text)
+	w.Write(c.Text)
 }
 
 // RootNode 是每个WANF文件AST的根节点.
@@ -96,16 +95,16 @@ func (p *RootNode) Format(w *bytes.Buffer, indent string, opts FormatOptions) {
 					return !iIsBlock
 				}
 				// 获取语句的名称以进行字母排序
-				getName := func(s Statement) string {
+				getName := func(s Statement) []byte {
 					if as, ok := s.(*AssignStatement); ok {
 						return as.Name.Value
 					}
 					if bs, ok := s.(*BlockStatement); ok {
 						return bs.Name.Value
 					}
-					return ""
+					return nil
 				}
-				return getName(statements[i]) < getName(statements[j])
+				return bytes.Compare(getName(statements[i]), getName(statements[j])) < 0
 			})
 		}
 	}
@@ -152,7 +151,7 @@ func (as *AssignStatement) String() string {
 func (as *AssignStatement) Format(w *bytes.Buffer, indent string, opts FormatOptions) {
 	for _, c := range as.LeadingComments {
 		w.WriteString(indent)
-		w.WriteString(c.Text)
+		w.Write(c.Text)
 		w.WriteString("\n")
 	}
 	w.WriteString(indent)
@@ -163,7 +162,7 @@ func (as *AssignStatement) Format(w *bytes.Buffer, indent string, opts FormatOpt
 	}
 	if as.LineComment != nil {
 		w.WriteString(" ")
-		w.WriteString(as.LineComment.Text)
+		w.Write(as.LineComment.Text)
 	}
 }
 
@@ -191,7 +190,7 @@ func (bs *BlockStatement) String() string {
 func (bs *BlockStatement) Format(w *bytes.Buffer, indent string, opts FormatOptions) {
 	for _, c := range bs.LeadingComments {
 		w.WriteString(indent)
-		w.WriteString(c.Text)
+		w.Write(c.Text)
 		w.WriteString("\n")
 	}
 	w.WriteString(indent)
@@ -238,7 +237,7 @@ func (vs *VarStatement) String() string {
 func (vs *VarStatement) Format(w *bytes.Buffer, indent string, opts FormatOptions) {
 	for _, c := range vs.LeadingComments {
 		w.WriteString(indent)
-		w.WriteString(c.Text)
+		w.Write(c.Text)
 		w.WriteString("\n")
 	}
 	w.WriteString(indent)
@@ -250,7 +249,7 @@ func (vs *VarStatement) Format(w *bytes.Buffer, indent string, opts FormatOption
 	}
 	if vs.LineComment != nil {
 		w.WriteString(" ")
-		w.WriteString(vs.LineComment.Text)
+		w.Write(vs.LineComment.Text)
 	}
 }
 
@@ -277,7 +276,7 @@ func (is *ImportStatement) String() string {
 func (is *ImportStatement) Format(w *bytes.Buffer, indent string, opts FormatOptions) {
 	for _, c := range is.LeadingComments {
 		w.WriteString(indent)
-		w.WriteString(c.Text)
+		w.Write(c.Text)
 		w.WriteString("\n")
 	}
 	w.WriteString(indent)
@@ -285,7 +284,7 @@ func (is *ImportStatement) Format(w *bytes.Buffer, indent string, opts FormatOpt
 	is.Path.Format(w, indent, opts)
 	if is.LineComment != nil {
 		w.WriteString(" ")
-		w.WriteString(is.LineComment.Text)
+		w.Write(is.LineComment.Text)
 	}
 }
 
@@ -294,14 +293,14 @@ func (is *ImportStatement) Format(w *bytes.Buffer, indent string, opts FormatOpt
 // Identifier 表示一个标识符.
 type Identifier struct {
 	Token Token
-	Value string
+	Value []byte
 }
 
 func (i *Identifier) expressionNode()      {}
 func (i *Identifier) TokenLiteral() string { return string(i.Token.Literal) }
-func (i *Identifier) String() string       { return i.Value }
+func (i *Identifier) String() string       { return string(i.Value) }
 func (i *Identifier) Format(w *bytes.Buffer, indent string, opts FormatOptions) {
-	w.WriteString(i.Value)
+	w.Write(i.Value)
 }
 
 // Literal 表示一个字面量.
@@ -313,24 +312,26 @@ type Literal interface {
 // StringLiteral 表示一个字符串字面量.
 type StringLiteral struct {
 	Token Token
-	Value string
+	Value []byte
 }
 
 func (sl *StringLiteral) expressionNode()      {}
 func (sl *StringLiteral) literalNode()         {}
 func (sl *StringLiteral) TokenLiteral() string { return string(sl.Token.Literal) }
 func (sl *StringLiteral) String() string {
-	if strings.Contains(sl.Value, "\n") {
-		return "`" + sl.Value + "`"
+	if bytes.Contains(sl.Value, []byte("\n")) {
+		return "`" + string(sl.Value) + "`"
 	}
-	return `"` + sl.Value + `"`
+	return `"` + string(sl.Value) + `"`
 }
 func (sl *StringLiteral) Format(w *bytes.Buffer, indent string, opts FormatOptions) {
-	if opts.Style != StyleSingleLine && strings.Contains(sl.Value, "\n") {
-		w.WriteString("`" + sl.Value + "`")
+	if opts.Style != StyleSingleLine && bytes.Contains(sl.Value, []byte("\n")) {
+		w.WriteString("`")
+		w.Write(sl.Value)
+		w.WriteString("`")
 	} else {
 		w.WriteString(`"`)
-		w.WriteString(sl.Value)
+		w.Write(sl.Value)
 		w.WriteString(`"`)
 	}
 }
@@ -380,7 +381,7 @@ func (bl *BoolLiteral) Format(w *bytes.Buffer, indent string, opts FormatOptions
 // DurationLiteral 表示一个持续时间.
 type DurationLiteral struct {
 	Token Token
-	Value string
+	Value []byte
 }
 
 func (dl *DurationLiteral) expressionNode()      {}
@@ -464,14 +465,16 @@ func (bl *BlockLiteral) Format(w *bytes.Buffer, indent string, opts FormatOption
 // VarExpression 表示一个变量引用, 如 `${var}`.
 type VarExpression struct {
 	Token Token
-	Name  string
+	Name  []byte
 }
 
 func (ve *VarExpression) expressionNode()      {}
 func (ve *VarExpression) TokenLiteral() string { return string(ve.Token.Literal) }
-func (ve *VarExpression) String() string       { return "${" + ve.Name + "}" }
+func (ve *VarExpression) String() string       { return "${" + string(ve.Name) + "}" }
 func (ve *VarExpression) Format(w *bytes.Buffer, indent string, opts FormatOptions) {
-	w.WriteString("${" + ve.Name + "}")
+	w.WriteString("${")
+	w.Write(ve.Name)
+	w.WriteString("}")
 }
 
 // EnvExpression 表示对 `env()` 函数的调用.
@@ -521,7 +524,7 @@ func (ml *MapLiteral) Format(w *bytes.Buffer, indent string, opts FormatOptions)
 		sort.SliceStable(ml.Elements, func(i, j int) bool {
 			iName := ml.Elements[i].(*AssignStatement).Name.Value
 			jName := ml.Elements[j].(*AssignStatement).Name.Value
-			return iName < jName
+			return bytes.Compare(iName, jName) < 0
 		})
 	}
 

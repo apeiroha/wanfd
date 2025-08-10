@@ -1,6 +1,8 @@
 package wanf
 
-import "fmt"
+import (
+	"fmt"
+)
 
 type TokenType string
 
@@ -40,19 +42,18 @@ const (
 	ILLEGAL_COMMENT TokenType = "ILLEGAL_COMMENT"
 )
 
-var keywordMap = map[string]TokenType{
-	"import": IMPORT,
-	"var":    VAR,
-	"true":   BOOL,
-	"false":  BOOL,
-}
-
-// LookupIdentifier 检查 ident 是否是关键字
+// LookupIdentifier 检查 ident 是否是关键字.
+// 使用 switch 和零拷贝的 BytesToString 函数.
 func LookupIdentifier(ident []byte) TokenType {
-	// 为了在map中查找,这里存在一个从[]byte到string的转换,会产生一次内存分配.
-	// 但这是必要的,因为直接使用[]byte作为map的键是不安全的,除非能保证它们不会被修改.
-	if tok, ok := keywordMap[string(ident)]; ok {
-		return tok
+	switch BytesToString(ident) {
+	case "import":
+		return IMPORT
+	case "var":
+		return VAR
+	case "true":
+		return BOOL
+	case "false":
+		return BOOL
 	}
 	return IDENT
 }

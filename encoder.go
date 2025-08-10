@@ -1,6 +1,7 @@
 package wanf
 
 import (
+	"bufio"
 	"bytes"
 	"fmt"
 	"io"
@@ -10,7 +11,10 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 )
+
+var durationType = reflect.TypeOf(time.Duration(0))
 
 var encoderPool = sync.Pool{
 	New: func() interface{} {
@@ -22,6 +26,38 @@ var encoderPool = sync.Pool{
 
 // fieldCache caches processed field information for a given struct type.
 var fieldCache sync.Map // map[reflect.Type][]cachedField
+
+var fieldInfoSlicePool = sync.Pool{
+	New: func() interface{} {
+		s := make([]fieldInfo, 0, 16) // Start with a reasonable capacity
+		return &s
+	},
+}
+
+var byteSlicePool = sync.Pool{
+	New: func() interface{} {
+		b := make([]byte, 0, 64) // For strconv formatting
+		return &b
+	},
+}
+
+type mapEntry struct {
+	key   reflect.Value
+	value reflect.Value
+}
+
+var mapEntrySlicePool = sync.Pool{
+	New: func() interface{} {
+		s := make([]mapEntry, 0, 8) // Start with capacity for 8 map entries
+		return &s
+	},
+}
+
+var streamEncoderPool = sync.Pool{
+	New: func() interface{} {
+		return &streamInternalEncoder{}
+	},
+}
 
 func getEncoder() *internalEncoder {
 	return encoderPool.Get().(*internalEncoder)
@@ -76,6 +112,14 @@ func NewEncoder(w io.Writer, opts ...EncoderOption) *Encoder {
 
 func (enc *Encoder) Encode(v interface{}) error {
 	defer putEncoder(enc.e)
+
+	tmpBufPtr := byteSlicePool.Get().(*[]byte)
+	enc.e.tmpBuf = *tmpBufPtr
+	defer func() {
+		*tmpBufPtr = (*tmpBufPtr)[:0]
+		byteSlicePool.Put(tmpBufPtr)
+	}()
+
 	rv := reflect.ValueOf(v)
 	if rv.Kind() == reflect.Ptr {
 		rv = rv.Elem()
@@ -97,6 +141,7 @@ type internalEncoder struct {
 	buf    *bytes.Buffer
 	indent int
 	opts   FormatOptions
+	tmpBuf []byte
 }
 
 type fieldInfo struct {
@@ -118,30 +163,22 @@ type cachedField struct {
 }
 
 func (e *internalEncoder) encodeStruct(v reflect.Value, depth int) error {
-	fields := e.gatherFields(v)
+	fieldsPtr := fieldInfoSlicePool.Get().(*[]fieldInfo)
+	fields := *fieldsPtr
+	gatherFields(v, &fields)
 
 	if !e.opts.NoSort {
-		// 根据编码风格对字段进行排序
-		// Sort fields based on the encoding style.
 		switch e.opts.Style {
 		case StyleBlockSorted, StyleAllSorted:
-			// StyleBlockSorted只在嵌套层级排序, StyleAllSorted在所有层级排序
-			// StyleBlockSorted only sorts in nested levels, StyleAllSorted sorts at all levels.
 			if e.opts.Style == StyleAllSorted || depth > 0 {
 				sort.Slice(fields, func(i, j int) bool {
-					// isBlock为false的是kv对, true的是嵌套块. kv对优先.
-					// Fields where isBlock is false are key-value pairs, true are nested blocks. KV pairs come first.
 					if fields[i].isBlock != fields[j].isBlock {
 						return !fields[i].isBlock
 					}
-					// 同类型按名称字母顺序排序
-					// Same types are sorted alphabetically by name.
 					return fields[i].name < fields[j].name
 				})
 			}
 		case StyleStreaming:
-			// StyleStreaming不进行任何排序, 保持结构体定义顺序
-			// StyleStreaming does no sorting, preserving the struct definition order.
 		}
 	}
 
@@ -151,12 +188,16 @@ func (e *internalEncoder) encodeStruct(v reflect.Value, depth int) error {
 		e.encodeField(f, depth)
 		prevWasBlockLike = f.isBlockLike
 	}
+
+	*fieldsPtr = fields[:0]
+	fieldInfoSlicePool.Put(fieldsPtr)
+
 	return nil
 }
 
 func (e *internalEncoder) encodeField(f fieldInfo, depth int) {
 	e.writeIndent()
-	e.buf.WriteString(f.name)
+	e.buf.Write(StringToBytes(f.name))
 	e.writeSpace()
 
 	if f.isBlock {
@@ -186,29 +227,29 @@ func (e *internalEncoder) encodeValue(v reflect.Value, depth int) {
 		}
 		v = v.Elem()
 	}
-	if d, ok := v.Interface().(time.Duration); ok {
-		e.buf.WriteString(d.String())
+	if v.Type() == durationType {
+		e.buf.WriteString(time.Duration(v.Int()).String())
 		return
 	}
 	switch v.Kind() {
 	case reflect.String:
 		s := v.String()
 		if e.opts.Style != StyleSingleLine && strings.Contains(s, "\n") {
-			e.buf.WriteString("`" + s + "`")
+			e.buf.WriteByte('`')
+			e.buf.WriteString(s)
+			e.buf.WriteByte('`')
 		} else {
-			e.buf.WriteString(strconv.Quote(s))
+			e.writeQuotedString(s)
 		}
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		e.buf.WriteString(strconv.FormatInt(v.Int(), 10))
+		e.buf.Write(strconv.AppendInt(e.tmpBuf[:0], v.Int(), 10))
 	case reflect.Float32, reflect.Float64:
-		e.buf.WriteString(strconv.FormatFloat(v.Float(), 'f', -1, 64))
+		e.buf.Write(strconv.AppendFloat(e.tmpBuf[:0], v.Float(), 'f', -1, 64))
 	case reflect.Bool:
-		e.buf.WriteString(strconv.FormatBool(v.Bool()))
+		e.buf.Write(strconv.AppendBool(e.tmpBuf[:0], v.Bool()))
 	case reflect.Slice, reflect.Array:
 		e.encodeSlice(v, depth)
 	case reflect.Struct:
-		// 处理空结构体, 紧凑输出: item = {}
-		// Handle empty struct for compact output: item = {}
 		if v.NumField() == 0 {
 			e.buf.WriteString("{}")
 			return
@@ -258,42 +299,51 @@ func (e *internalEncoder) encodeSlice(v reflect.Value, depth int) {
 
 func (e *internalEncoder) encodeMap(v reflect.Value, depth int) {
 	e.buf.WriteString("{[")
-	keys := v.MapKeys()
-	if len(keys) == 0 {
+	if v.Len() == 0 {
 		e.buf.WriteString("]}")
 		return
 	}
 
-	sort.Slice(keys, func(i, j int) bool {
-		return keys[i].String() < keys[j].String()
+	entriesPtr := mapEntrySlicePool.Get().(*[]mapEntry)
+	entries := *entriesPtr
+	iter := v.MapRange()
+	for iter.Next() {
+		entries = append(entries, mapEntry{key: iter.Key(), value: iter.Value()})
+	}
+
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].key.String() < entries[j].key.String()
 	})
 
 	if e.opts.Style == StyleSingleLine {
-		for i, key := range keys {
+		for i, entry := range entries {
 			if i > 0 {
 				e.buf.WriteString(",")
 			}
-			e.buf.WriteString(key.String())
+			e.buf.Write(StringToBytes(entry.key.String()))
 			e.buf.WriteString("=")
-			e.encodeValue(v.MapIndex(key), depth)
+			e.encodeValue(entry.value, depth)
 		}
 	} else {
-		e.writeNewLine()
+		e.buf.WriteString("\n")
 		e.indent++
-		for _, key := range keys {
+		for _, entry := range entries {
 			e.writeIndent()
-			e.buf.WriteString(key.String())
+			e.buf.Write(StringToBytes(entry.key.String()))
 			e.writeSpace()
 			e.buf.WriteString("=")
 			e.writeSpace()
-			e.encodeValue(v.MapIndex(key), depth)
+			e.encodeValue(entry.value, depth)
 			e.buf.WriteString(",")
-			e.writeNewLine()
+			e.buf.WriteString("\n")
 		}
 		e.indent--
 		e.writeIndent()
 	}
 	e.buf.WriteString("]}")
+
+	*entriesPtr = entries[:0]
+	mapEntrySlicePool.Put(entriesPtr)
 }
 
 func (e *internalEncoder) writeIndent() {
@@ -322,19 +372,332 @@ func (e *internalEncoder) writeSeparator(isNotFirst, isCurrentBlockLike, isPrevB
 		return
 	}
 	e.writeNewLine()
-	// 在StyleBlockSorted或StyleAllSorted模式下, 且启用了空行时, 在顶级块之间添加空行
-	// In StyleBlockSorted or StyleAllSorted mode, when empty lines are enabled, add an empty line between top-level blocks.
 	if depth == 0 && (e.opts.Style == StyleBlockSorted || e.opts.Style == StyleAllSorted) && e.opts.EmptyLines && (isCurrentBlockLike || isPrevBlockLike) {
 		e.writeNewLine()
 	}
 }
 
-func (e *internalEncoder) gatherFields(v reflect.Value) []fieldInfo {
+func (e *streamInternalEncoder) writeQuotedString(s string) {
+	if e.err != nil {
+		return
+	}
+	e.writeByte('"')
+	start := 0
+	for i := 0; i < len(s); {
+		if b := s[i]; b < utf8.RuneSelf {
+			if 0x20 <= b && b != '\\' && b != '"' {
+				i++
+				continue
+			}
+			if start < i {
+				e.writeString(s[start:i])
+			}
+			switch b {
+			case '\\', '"':
+				e.writeByte('\\')
+				e.writeByte(b)
+			case '\n':
+				e.writeString("\\n")
+			case '\r':
+				e.writeString("\\r")
+			case '\t':
+				e.writeString("\\t")
+			default:
+				e.writeString(`\u00`)
+				e.writeByte(hex[b>>4])
+				e.writeByte(hex[b&0xF])
+			}
+			i++
+			start = i
+			continue
+		}
+		c, size := utf8.DecodeRuneInString(s[i:])
+		if c == utf8.RuneError && size == 1 {
+			if start < i {
+				e.writeString(s[start:i])
+			}
+			e.writeString(`\ufffd`)
+			i += size
+			start = i
+			continue
+		}
+		i += size
+	}
+	if start < len(s) {
+		e.writeString(s[start:])
+	}
+	e.writeByte('"')
+}
+
+func (e *internalEncoder) writeQuotedString(s string) {
+	e.buf.WriteByte('"')
+	start := 0
+	for i := 0; i < len(s); {
+		if b := s[i]; b < utf8.RuneSelf {
+			if 0x20 <= b && b != '\\' && b != '"' {
+				i++
+				continue
+			}
+			if start < i {
+				e.buf.WriteString(s[start:i])
+			}
+			switch b {
+			case '\\', '"':
+				e.buf.WriteByte('\\')
+				e.buf.WriteByte(b)
+			case '\n':
+				e.buf.WriteString("\\n")
+			case '\r':
+				e.buf.WriteString("\\r")
+			case '\t':
+				e.buf.WriteString("\\t")
+			default:
+				e.buf.WriteString(`\u00`)
+				e.buf.WriteByte(hex[b>>4])
+				e.buf.WriteByte(hex[b&0xF])
+			}
+			i++
+			start = i
+			continue
+		}
+		c, size := utf8.DecodeRuneInString(s[i:])
+		if c == utf8.RuneError && size == 1 {
+			if start < i {
+				e.buf.WriteString(s[start:i])
+			}
+			e.buf.WriteString(`\ufffd`)
+			i += size
+			start = i
+			continue
+		}
+		i += size
+	}
+	if start < len(s) {
+		e.buf.WriteString(s[start:])
+	}
+	e.buf.WriteByte('"')
+}
+
+var hex = "0123456789abcdef"
+
+func (e *streamInternalEncoder) encode(v interface{}) error {
+	rv := reflect.ValueOf(v)
+	if rv.Kind() == reflect.Ptr {
+		rv = rv.Elem()
+	}
+	if !rv.IsValid() || rv.Kind() != reflect.Struct {
+		return fmt.Errorf("wanf: can only encode a non-nil struct")
+	}
+	e.encodeStruct(rv, 0)
+	if e.opts.Style != StyleSingleLine {
+		e.writeString("\n")
+	}
+	return e.err
+}
+
+func (e *streamInternalEncoder) encodeStruct(v reflect.Value, depth int) {
+	if e.err != nil {
+		return
+	}
+	fieldsPtr := fieldInfoSlicePool.Get().(*[]fieldInfo)
+	fields := *fieldsPtr
+	gatherFields(v, &fields)
+
+	if !e.opts.NoSort {
+		switch e.opts.Style {
+		case StyleBlockSorted, StyleAllSorted:
+			if e.opts.Style == StyleAllSorted || depth > 0 {
+				sort.Slice(fields, func(i, j int) bool {
+					if fields[i].isBlock != fields[j].isBlock {
+						return !fields[i].isBlock
+					}
+					return fields[i].name < fields[j].name
+				})
+			}
+		case StyleStreaming:
+		}
+	}
+
+	var prevWasBlockLike bool
+	for i, f := range fields {
+		e.writeSeparator(i > 0, f.isBlockLike, prevWasBlockLike, depth)
+		e.encodeField(f, depth)
+		prevWasBlockLike = f.isBlockLike
+	}
+
+	*fieldsPtr = fields[:0]
+	fieldInfoSlicePool.Put(fieldsPtr)
+}
+
+func (e *streamInternalEncoder) encodeField(f fieldInfo, depth int) {
+	if e.err != nil {
+		return
+	}
+	e.writeIndent()
+	e.writeString(f.name)
+	e.writeSpace()
+
+	if f.isBlock {
+		if f.value.Kind() == reflect.Map {
+			e.encodeMap(f.value, depth+1)
+		} else {
+			e.writeString("{")
+			e.writeNewLine()
+			e.indent++
+			e.encodeStruct(f.value, depth+1)
+			e.indent--
+			e.writeNewLine()
+			e.writeIndent()
+			e.writeByte('}')
+		}
+	} else {
+		e.writeString("=")
+		e.writeSpace()
+		e.encodeValue(f.value, depth)
+	}
+}
+
+func (e *streamInternalEncoder) encodeValue(v reflect.Value, depth int) {
+	if e.err != nil {
+		return
+	}
+	if v.Kind() == reflect.Ptr {
+		if v.IsNil() {
+			return
+		}
+		v = v.Elem()
+	}
+	if v.Type() == durationType {
+		e.writeString(time.Duration(v.Int()).String())
+		return
+	}
+	switch v.Kind() {
+	case reflect.String:
+		s := v.String()
+		if e.opts.Style != StyleSingleLine && strings.Contains(s, "\n") {
+			e.writeByte('`')
+			e.writeString(s)
+			e.writeByte('`')
+		} else {
+			e.writeQuotedString(s)
+		}
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		e.write(strconv.AppendInt(e.tmpBuf[:0], v.Int(), 10))
+	case reflect.Float32, reflect.Float64:
+		e.write(strconv.AppendFloat(e.tmpBuf[:0], v.Float(), 'f', -1, 64))
+	case reflect.Bool:
+		e.write(strconv.AppendBool(e.tmpBuf[:0], v.Bool()))
+	case reflect.Slice, reflect.Array:
+		e.encodeSlice(v, depth)
+	case reflect.Struct:
+		if v.NumField() == 0 {
+			e.writeString("{}")
+			return
+		}
+		e.writeString("{")
+		e.writeNewLine()
+		e.indent++
+		e.encodeStruct(v, depth+1)
+		e.indent--
+		e.writeNewLine()
+		e.writeIndent()
+		e.writeByte('}')
+	case reflect.Map:
+		e.encodeMap(v, depth)
+	}
+}
+
+func (e *streamInternalEncoder) encodeSlice(v reflect.Value, depth int) {
+	if e.err != nil {
+		return
+	}
+	e.writeString("[")
+	l := v.Len()
+	if l == 0 {
+		e.writeByte(']')
+		return
+	}
+
+	if e.opts.Style == StyleSingleLine {
+		for i := 0; i < l; i++ {
+			if i > 0 {
+				e.writeString(",")
+			}
+			e.encodeValue(v.Index(i), depth)
+		}
+	} else {
+		e.writeNewLine()
+		e.indent++
+		for i := 0; i < l; i++ {
+			e.writeIndent()
+			e.encodeValue(v.Index(i), depth)
+			e.writeString(",")
+			e.writeNewLine()
+		}
+		e.indent--
+		e.writeIndent()
+	}
+	e.writeByte(']')
+}
+
+func (e *streamInternalEncoder) encodeMap(v reflect.Value, depth int) {
+	if e.err != nil {
+		return
+	}
+	e.writeString("{[")
+	if v.Len() == 0 {
+		e.writeString("]}")
+		return
+	}
+
+	entriesPtr := mapEntrySlicePool.Get().(*[]mapEntry)
+	entries := *entriesPtr
+	iter := v.MapRange()
+	for iter.Next() {
+		entries = append(entries, mapEntry{key: iter.Key(), value: iter.Value()})
+	}
+
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].key.String() < entries[j].key.String()
+	})
+
+	if e.opts.Style == StyleSingleLine {
+		for i, entry := range entries {
+			if i > 0 {
+				e.writeString(",")
+			}
+			e.writeString(entry.key.String())
+			e.writeString("=")
+			e.encodeValue(entry.value, depth)
+		}
+	} else {
+		e.writeNewLine()
+		e.indent++
+		for _, entry := range entries {
+			e.writeIndent()
+			e.writeString(entry.key.String())
+			e.writeSpace()
+			e.writeString("=")
+			e.writeSpace()
+			e.encodeValue(entry.value, depth)
+			e.writeString(",")
+			e.writeNewLine()
+		}
+		e.indent--
+		e.writeIndent()
+	}
+	e.writeString("]}")
+
+	*entriesPtr = entries[:0]
+	mapEntrySlicePool.Put(entriesPtr)
+}
+
+func gatherFields(v reflect.Value, fields *[]fieldInfo) {
 	if v.Kind() == reflect.Ptr {
 		v = v.Elem()
 	}
 	if !v.IsValid() || v.Kind() != reflect.Struct {
-		return nil
+		return
 	}
 	t := v.Type()
 	cached, ok := fieldCache.Load(t)
@@ -344,13 +707,12 @@ func (e *internalEncoder) gatherFields(v reflect.Value) []fieldInfo {
 	}
 
 	cachedFields := cached.([]cachedField)
-	fields := make([]fieldInfo, 0, len(cachedFields))
 	for _, cf := range cachedFields {
 		fieldVal := v.Field(cf.index)
 		if (cf.tag.Omitempty && isZero(fieldVal)) || (fieldVal.Kind() == reflect.Map && fieldVal.Len() == 0) {
 			continue
 		}
-		fields = append(fields, fieldInfo{
+		*fields = append(*fields, fieldInfo{
 			name:        cf.name,
 			value:       fieldVal,
 			tag:         cf.tag,
@@ -359,7 +721,6 @@ func (e *internalEncoder) gatherFields(v reflect.Value) []fieldInfo {
 			isBlockLike: cf.isBlockLike,
 		})
 	}
-	return fields
 }
 
 func cacheStructInfo(t reflect.Type) []cachedField {
@@ -417,4 +778,114 @@ func isZero(v reflect.Value) bool {
 		return v.Len() == 0
 	}
 	return false
+}
+
+// --- Streaming Encoder ---
+
+type StreamEncoder struct {
+	w io.Writer
+}
+
+func NewStreamEncoder(w io.Writer, opts ...EncoderOption) *StreamEncoder {
+	// For now, we just store the writer. The internal encoder will be set up in Encode.
+	return &StreamEncoder{w: w}
+}
+
+func (enc *StreamEncoder) Encode(v interface{}, opts ...EncoderOption) error {
+	options := FormatOptions{
+		Style:      StyleBlockSorted,
+		EmptyLines: true,
+	}
+	for _, opt := range opts {
+		opt(&options)
+	}
+
+	se := streamEncoderPool.Get().(*streamInternalEncoder)
+	defer streamEncoderPool.Put(se)
+
+	tmpBufPtr := byteSlicePool.Get().(*[]byte)
+	se.tmpBuf = *tmpBufPtr
+	defer func() {
+		*tmpBufPtr = (*tmpBufPtr)[:0]
+		byteSlicePool.Put(tmpBufPtr)
+	}()
+
+	// Reset the state of the pooled encoder
+	bw := bufio.NewWriter(enc.w)
+	se.w = bw
+	se.indent = 0
+	se.opts = options
+	se.err = nil
+
+	// Run the main encoding logic
+	if err := se.encode(v); err != nil {
+		return err
+	}
+
+	// Flush the buffer and return any I/O error
+	return bw.Flush()
+}
+
+type streamInternalEncoder struct {
+	w      io.Writer
+	indent int
+	opts   FormatOptions
+	err    error
+	tmpBuf []byte
+}
+
+func (e *streamInternalEncoder) writeString(s string) {
+	if e.err != nil {
+		return
+	}
+	_, e.err = e.w.Write(StringToBytes(s))
+}
+
+func (e *streamInternalEncoder) writeByte(b byte) {
+	if e.err != nil {
+		return
+	}
+	// This is a common pattern for writing a single byte to an io.Writer
+	// that doesn't have a WriteByte method.
+	_, e.err = e.w.Write(singleCharByteSlices[b])
+}
+
+func (e *streamInternalEncoder) write(p []byte) {
+	if e.err != nil {
+		return
+	}
+	_, e.err = e.w.Write(p)
+}
+
+// The following write helpers are adapted from the buffered encoder
+// to work with the streaming encoder's error handling.
+func (e *streamInternalEncoder) writeIndent() {
+	if e.opts.Style != StyleSingleLine {
+		for i := 0; i < e.indent; i++ {
+			e.writeByte('\t')
+		}
+	}
+}
+func (e *streamInternalEncoder) writeNewLine() {
+	if e.opts.Style != StyleSingleLine {
+		e.writeByte('\n')
+	}
+}
+func (e *streamInternalEncoder) writeSpace() {
+	if e.opts.Style != StyleSingleLine {
+		e.writeString(" ")
+	}
+}
+func (e *streamInternalEncoder) writeSeparator(isNotFirst, isCurrentBlockLike, isPrevBlockLike bool, depth int) {
+	if !isNotFirst {
+		return
+	}
+	if e.opts.Style == StyleSingleLine {
+		e.writeString(";")
+		return
+	}
+	e.writeNewLine()
+	if depth == 0 && (e.opts.Style == StyleBlockSorted || e.opts.Style == StyleAllSorted) && e.opts.EmptyLines && (isCurrentBlockLike || isPrevBlockLike) {
+		e.writeNewLine()
+	}
 }

@@ -1,45 +1,61 @@
 package wanf
 
 import (
+	"bufio"
 	"bytes"
+	"io"
 	"unicode"
 )
 
-var singleCharByteSlices [256][]byte
+// This file contains the stream-based lexer.
 
-func init() {
-	for i := 0; i < 256; i++ {
-		singleCharByteSlices[i] = []byte{byte(i)}
+var dot = []byte{'.'}
+
+// streamLexer 是一个从 io.Reader 读取数据的词法分析器.
+// 它使用 bufio.Reader 来实现高效的预读(peek)功能, 并使用两个交替的 bytes.Buffer 来实现零分配的词法单元字面量生成.
+type streamLexer struct {
+	r       *bufio.Reader
+	ch      byte
+	line    int
+	column  int
+	bufA    bytes.Buffer
+	bufB    bytes.Buffer
+	useBufA bool
+}
+
+// newStreamLexer creates a new stream-based lexer.
+func newStreamLexer(r io.Reader) *streamLexer {
+	l := &streamLexer{
+		r:       bufio.NewReader(r),
+		line:    1,
+		useBufA: true,
 	}
-}
-
-type Lexer struct {
-	input        []byte // 使用 []byte 避免复制
-	position     int
-	readPosition int
-	ch           byte
-	line         int
-	column       int
-}
-
-func NewLexer(input []byte) *Lexer {
-	l := &Lexer{input: input, line: 1}
 	l.readChar()
 	return l
 }
 
-func (l *Lexer) readChar() {
-	if l.readPosition >= len(l.input) {
+func (l *streamLexer) readChar() {
+	var err error
+	l.ch, err = l.r.ReadByte()
+	if err != nil {
 		l.ch = 0
-	} else {
-		l.ch = l.input[l.readPosition]
 	}
-	l.position = l.readPosition
-	l.readPosition++
 	l.column++
 }
 
-func (l *Lexer) NextToken() Token {
+func (l *streamLexer) peekChar() byte {
+	b, err := l.r.Peek(1)
+	if err != nil {
+		return 0
+	}
+	return b[0]
+}
+
+func (l *streamLexer) newToken(tokenType TokenType, ch byte, line, column int) Token {
+	return Token{Type: tokenType, Literal: singleCharByteSlices[ch], Line: line, Column: column}
+}
+
+func (l *streamLexer) NextToken() Token {
 	var tok Token
 	l.skipWhitespace()
 	line, col := l.line, l.column
@@ -76,8 +92,9 @@ func (l *Lexer) NextToken() Token {
 			tok = l.newToken(ILLEGAL, l.ch, line, col)
 		}
 	case '"', '\'', '`':
+		quote := l.ch
 		tok.Type = STRING
-		tok.Literal = l.readString()
+		tok.Literal = l.readString(quote)
 		tok.Line = line
 		tok.Column = col
 		return tok
@@ -119,12 +136,10 @@ func (l *Lexer) NextToken() Token {
 		} else if unicode.IsDigit(rune(l.ch)) {
 			literal := l.readNumber()
 			if l.ch == 's' || l.ch == 'm' || l.ch == 'h' || (l.ch == 'u' && l.peekChar() == 's') || (l.ch == 'n' && l.peekChar() == 's') || (l.ch == 'm' && l.peekChar() == 's') {
-				startPos := l.position - len(literal)
-				l.readDurationSuffix()
 				tok.Type = DUR
-				tok.Literal = l.input[startPos:l.position]
+				tok.Literal = l.readDurationSuffix(literal)
 			} else {
-				if bytes.Contains(literal, []byte(".")) {
+				if bytes.Contains(literal, dot) {
 					tok.Type = FLOAT
 				} else {
 					tok.Type = INT
@@ -142,15 +157,36 @@ func (l *Lexer) NextToken() Token {
 	return tok
 }
 
-func (l *Lexer) readDurationSuffix() {
+const defaultBufferSize = 64
+
+func (l *streamLexer) activeBuffer() *bytes.Buffer {
+	var buf *bytes.Buffer
+	if l.useBufA {
+		buf = &l.bufA
+	} else {
+		buf = &l.bufB
+	}
+	l.useBufA = !l.useBufA
+	buf.Reset()
+	buf.Grow(defaultBufferSize)
+	return buf
+}
+
+func (l *streamLexer) readDurationSuffix(prefix []byte) []byte {
+	buf := l.activeBuffer()
+	buf.Write(prefix)
 	if l.ch == 'm' || l.ch == 'u' || l.ch == 'n' {
 		if l.peekChar() == 's' {
+			buf.WriteByte(l.ch)
 			l.readChar()
 		}
 	}
+	buf.WriteByte(l.ch)
 	l.readChar()
+	return buf.Bytes()
 }
-func (l *Lexer) skipWhitespace() {
+
+func (l *streamLexer) skipWhitespace() {
 	for l.ch == ' ' || l.ch == '\t' || l.ch == '\r' || l.ch == '\n' {
 		if l.ch == '\n' {
 			l.line++
@@ -159,90 +195,86 @@ func (l *Lexer) skipWhitespace() {
 		l.readChar()
 	}
 }
-func (l *Lexer) readSingleLineComment() []byte {
-	position := l.position
+
+func (l *streamLexer) readSingleLineComment() []byte {
+	buf := l.activeBuffer()
 	for l.ch != '\n' && l.ch != 0 {
+		buf.WriteByte(l.ch)
 		l.readChar()
 	}
-	return l.input[position:l.position]
+	return buf.Bytes()
 }
 
-func (l *Lexer) readMultiLineComment() ([]byte, bool) {
-	position := l.position
-	l.readChar() // consume '/'
-	l.readChar() // consume '*'
+func (l *streamLexer) readMultiLineComment() ([]byte, bool) {
+	buf := l.activeBuffer()
+	startLine, startCol := l.line, l.column
+	buf.WriteByte(l.ch)
+	l.readChar()
+	buf.WriteByte(l.ch)
+	l.readChar()
 	for {
 		if l.ch == 0 {
-			return l.input[position:l.position], false // unclosed
+			l.line, l.column = startLine, startCol
+			return buf.Bytes(), false
 		}
 		if l.ch == '*' && l.peekChar() == '/' {
+			buf.WriteByte(l.ch)
 			l.readChar()
+			buf.WriteByte(l.ch)
 			l.readChar()
-			break // closed
+			break
 		}
 		if l.ch == '\n' {
 			l.line++
 			l.column = 0
 		}
+		buf.WriteByte(l.ch)
 		l.readChar()
 	}
-	return l.input[position:l.position], true // closed
+	return buf.Bytes(), true
 }
 
-func (l *Lexer) readIdentifier() []byte {
-	position := l.position
-	for isIdentifierChar(l.ch) {
+func (l *streamLexer) readIdentifier() []byte {
+	buf := l.activeBuffer()
+	for isIdentifierStart(l.ch) || unicode.IsDigit(rune(l.ch)) {
+		buf.WriteByte(l.ch)
 		l.readChar()
 	}
-	return l.input[position:l.position]
+	return buf.Bytes()
 }
-func (l *Lexer) readNumber() []byte {
-	position := l.position
+
+func (l *streamLexer) readNumber() []byte {
+	buf := l.activeBuffer()
 	isFloat := false
 	for unicode.IsDigit(rune(l.ch)) || (l.ch == '.' && !isFloat) {
 		if l.ch == '.' {
 			isFloat = true
 		}
+		buf.WriteByte(l.ch)
 		l.readChar()
 	}
-	return l.input[position:l.position]
+	return buf.Bytes()
 }
-func (l *Lexer) readString() []byte {
-	quote := l.ch
-	position := l.position + 1
+
+func (l *streamLexer) readString(quote byte) []byte {
+	buf := l.activeBuffer()
+	l.readChar()
 	for {
-		l.readChar()
 		if l.ch == quote || l.ch == 0 {
 			break
 		}
-	}
-	literal := l.input[position:l.position]
-	l.readChar()
-	return literal
-}
-
-func (l *Lexer) readUntilEndOfLine() []byte {
-	position := l.position
-	for {
-		if l.ch == '\n' || l.ch == '\r' || l.ch == 0 {
-			break
-		}
+		buf.WriteByte(l.ch)
 		l.readChar()
 	}
-	return l.input[position:l.position]
+	l.readChar()
+	return buf.Bytes()
 }
-func (l *Lexer) peekChar() byte {
-	if l.readPosition >= len(l.input) {
-		return 0
+
+func (l *streamLexer) readUntilEndOfLine() []byte {
+	buf := l.activeBuffer()
+	for l.ch != '\n' && l.ch != '\r' && l.ch != 0 {
+		buf.WriteByte(l.ch)
+		l.readChar()
 	}
-	return l.input[l.readPosition]
-}
-func (l *Lexer) newToken(tokenType TokenType, ch byte, line, column int) Token {
-	return Token{Type: tokenType, Literal: singleCharByteSlices[ch], Line: line, Column: column}
-}
-func isIdentifierStart(ch byte) bool {
-	return (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || ch == '_'
-}
-func isIdentifierChar(ch byte) bool {
-	return isIdentifierStart(ch) || unicode.IsDigit(rune(ch))
+	return buf.Bytes()
 }

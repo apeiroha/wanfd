@@ -7,7 +7,6 @@ database {
 	host = env("DB_HOST", "127.0.0.1")
 	port = 5432
 	user = "admin"
-
 	// 从环境变量 DB_PASSWORD 读取值。
 	// 如果此环境变量未设置, 解析将会失败并报错。
 	password = env("DB_PASSWORD")
