@@ -106,8 +106,8 @@ func (p *Parser) nextToken() {
 }
 
 func (p *Parser) ParseProgram() *RootNode {
-	program := &RootNode{}
-	program.Statements = []Statement{}
+	program := getRootNode()
+	program.Statements = make([]Statement, 0, 8) // Pre-allocate with a reasonable capacity
 	for !p.curTokenIs(EOF) {
 		stmt := p.parseStatement()
 		if stmt != nil {
@@ -120,7 +120,9 @@ func (p *Parser) ParseProgram() *RootNode {
 func (p *Parser) parseLeadingComments() []*Comment {
 	var comments []*Comment
 	for p.curTokenIs(COMMENT) {
-		comment := &Comment{Token: p.curToken, Text: p.curToken.Literal}
+		comment := getComment()
+		comment.Token = p.curToken
+		comment.Text = p.curToken.Literal
 		comments = append(comments, comment)
 		p.nextToken()
 	}
@@ -180,7 +182,9 @@ func (p *Parser) parseStatement() Statement {
 
 	if p.peekTokenIs(COMMENT) && p.peekToken.Line == p.curToken.Line {
 		p.nextToken()
-		lineComment := &Comment{Token: p.curToken, Text: p.curToken.Literal}
+		lineComment := getComment()
+		lineComment.Token = p.curToken
+		lineComment.Text = p.curToken.Literal
 		switch s := stmt.(type) {
 		case *AssignStatement:
 			s.LineComment = lineComment
@@ -196,8 +200,12 @@ func (p *Parser) parseStatement() Statement {
 }
 
 func (p *Parser) parseAssignStatement(leading []*Comment) *AssignStatement {
-	stmt := &AssignStatement{Token: p.curToken, LeadingComments: leading}
-	stmt.Name = &Identifier{Token: p.curToken, Value: p.curToken.Literal}
+	stmt := getAssignStatement()
+	stmt.Token = p.curToken
+	stmt.LeadingComments = leading
+	stmt.Name = getIdentifier()
+	stmt.Name.Token = p.curToken
+	stmt.Name.Value = p.curToken.Literal
 	p.nextToken()
 	p.nextToken()
 	stmt.Value = p.parseExpression(LOWEST)
@@ -205,13 +213,18 @@ func (p *Parser) parseAssignStatement(leading []*Comment) *AssignStatement {
 }
 
 func (p *Parser) parseBlockStatement(leading []*Comment) *BlockStatement {
-	stmt := &BlockStatement{Token: p.curToken, LeadingComments: leading}
-	stmt.Name = &Identifier{Token: p.curToken, Value: p.curToken.Literal}
+	stmt := getBlockStatement()
+	stmt.Token = p.curToken
+	stmt.LeadingComments = leading
+	stmt.Name = getIdentifier()
+	stmt.Name.Token = p.curToken
+	stmt.Name.Value = p.curToken.Literal
 	if p.peekTokenIs(STRING) {
 		p.nextToken()
 		stmt.Label = p.parseStringLiteral().(*StringLiteral)
 	}
 	if !p.expectPeek(LBRACE) {
+		blockStatementPool.Put(stmt)
 		return nil
 	}
 	stmt.Body = p.parseBlockBody()
@@ -219,8 +232,8 @@ func (p *Parser) parseBlockStatement(leading []*Comment) *BlockStatement {
 }
 
 func (p *Parser) parseBlockBody() *RootNode {
-	body := &RootNode{}
-	body.Statements = []Statement{}
+	body := getRootNode()
+	body.Statements = make([]Statement, 0, 4)
 	p.nextToken()
 	for !p.curTokenIs(RBRACE) && !p.curTokenIs(EOF) {
 		stmt := p.parseStatement()
@@ -244,12 +257,18 @@ func (p *Parser) parseBlockBody() *RootNode {
 }
 
 func (p *Parser) parseVarStatement(leading []*Comment) *VarStatement {
-	stmt := &VarStatement{Token: p.curToken, LeadingComments: leading}
+	stmt := getVarStatement()
+	stmt.Token = p.curToken
+	stmt.LeadingComments = leading
 	if !p.expectPeek(IDENT) {
+		varStatementPool.Put(stmt)
 		return nil
 	}
-	stmt.Name = &Identifier{Token: p.curToken, Value: p.curToken.Literal}
+	stmt.Name = getIdentifier()
+	stmt.Name.Token = p.curToken
+	stmt.Name.Value = p.curToken.Literal
 	if !p.expectPeek(ASSIGN) {
+		varStatementPool.Put(stmt)
 		return nil
 	}
 	p.nextToken()
@@ -258,8 +277,11 @@ func (p *Parser) parseVarStatement(leading []*Comment) *VarStatement {
 }
 
 func (p *Parser) parseImportStatement(leading []*Comment) *ImportStatement {
-	stmt := &ImportStatement{Token: p.curToken, LeadingComments: leading}
+	stmt := getImportStatement()
+	stmt.Token = p.curToken
+	stmt.LeadingComments = leading
 	if !p.expectPeek(STRING) {
+		importStatementPool.Put(stmt)
 		return nil
 	}
 	stmt.Path = p.parseStringLiteral().(*StringLiteral)
@@ -282,14 +304,19 @@ func (p *Parser) parseIdentifier() Expression {
 	if bytes.Equal(p.curToken.Literal, envLiteral) && p.peekTokenIs(LPAREN) {
 		return p.parseEnvExpression()
 	}
-	return &Identifier{Token: p.curToken, Value: p.curToken.Literal}
+	ident := getIdentifier()
+	ident.Token = p.curToken
+	ident.Value = p.curToken.Literal
+	return ident
 }
 
 func (p *Parser) parseIntegerLiteral() Expression {
-	lit := &IntegerLiteral{Token: p.curToken}
+	lit := getIntegerLiteral()
+	lit.Token = p.curToken
 	value, err := strconv.ParseInt(BytesToString(p.curToken.Literal), 0, 64)
 	if err != nil {
 		p.appendError(fmt.Sprintf("could not parse %q as integer", p.curToken.Literal))
+		integerLiteralPool.Put(lit)
 		return nil
 	}
 	lit.Value = value
@@ -297,10 +324,12 @@ func (p *Parser) parseIntegerLiteral() Expression {
 }
 
 func (p *Parser) parseFloatLiteral() Expression {
-	lit := &FloatLiteral{Token: p.curToken}
+	lit := getFloatLiteral()
+	lit.Token = p.curToken
 	value, err := strconv.ParseFloat(BytesToString(p.curToken.Literal), 64)
 	if err != nil {
 		p.appendError(fmt.Sprintf("could not parse %q as float", p.curToken.Literal))
+		floatLiteralPool.Put(lit)
 		return nil
 	}
 	lit.Value = value
@@ -308,14 +337,19 @@ func (p *Parser) parseFloatLiteral() Expression {
 }
 
 func (p *Parser) parseStringLiteral() Expression {
-	return &StringLiteral{Token: p.curToken, Value: p.curToken.Literal}
+	lit := getStringLiteral()
+	lit.Token = p.curToken
+	lit.Value = p.curToken.Literal
+	return lit
 }
 
 func (p *Parser) parseBooleanLiteral() Expression {
-	lit := &BoolLiteral{Token: p.curToken}
+	lit := getBoolLiteral()
+	lit.Token = p.curToken
 	value, err := strconv.ParseBool(BytesToString(p.curToken.Literal))
 	if err != nil {
 		p.appendError(fmt.Sprintf("could not parse %q as boolean", p.curToken.Literal))
+		boolLiteralPool.Put(lit)
 		return nil
 	}
 	lit.Value = value
@@ -323,11 +357,15 @@ func (p *Parser) parseBooleanLiteral() Expression {
 }
 
 func (p *Parser) parseDurationLiteral() Expression {
-	return &DurationLiteral{Token: p.curToken, Value: p.curToken.Literal}
+	lit := getDurationLiteral()
+	lit.Token = p.curToken
+	lit.Value = p.curToken.Literal
+	return lit
 }
 
 func (p *Parser) parseListLiteral() Expression {
-	list := &ListLiteral{Token: p.curToken}
+	list := getListLiteral()
+	list.Token = p.curToken
 	p.nextToken()
 	list.Elements = p.parseExpressionList(RBRACK)
 	return list
@@ -341,17 +379,20 @@ func (p *Parser) parseBlockOrMapLiteral() Expression {
 }
 
 func (p *Parser) parseMapLiteral() Expression {
-	mapLit := &MapLiteral{Token: p.curToken} // cur is {
-	p.nextToken()                            // consume {, cur is [
-	p.nextToken()                            // consume [, cur is first element
+	mapLit := getMapLiteral()
+	mapLit.Token = p.curToken // cur is {
+	p.nextToken()             // consume {, cur is [
+	p.nextToken()             // consume [, cur is first element
 
 	mapLit.Elements = p.parseMapElementList()
 	if mapLit.Elements == nil {
+		mapLiteralPool.Put(mapLit)
 		return nil
 	}
 
 	// after parseMapElementList, curToken is RBRACK
 	if !p.expectPeek(RBRACE) {
+		mapLiteralPool.Put(mapLit)
 		return nil
 	}
 	return mapLit
@@ -402,31 +443,38 @@ func (p *Parser) parseMapElementList() []Statement {
 }
 
 func (p *Parser) parseBlockLiteral() Expression {
-	block := &BlockLiteral{Token: p.curToken}
+	block := getBlockLiteral()
+	block.Token = p.curToken
 	block.Body = p.parseBlockBody()
 	return block
 }
 
 func (p *Parser) parseVarExpression() Expression {
-	expr := &VarExpression{Token: p.curToken}
+	expr := getVarExpression()
+	expr.Token = p.curToken
 	if !p.expectPeek(IDENT) {
+		varExpressionPool.Put(expr)
 		return nil
 	}
 	expr.Name = p.curToken.Literal
 	if !p.expectPeek(RBRACE) {
+		varExpressionPool.Put(expr)
 		return nil
 	}
 	return expr
 }
 
 func (p *Parser) parseEnvExpression() Expression {
-	expr := &EnvExpression{Token: p.curToken}
+	expr := getEnvExpression()
+	expr.Token = p.curToken
 	if !p.expectPeek(LPAREN) {
+		envExpressionPool.Put(expr)
 		return nil
 	}
 	p.nextToken()
 	if !p.curTokenIs(STRING) {
 		p.appendError("expected string argument for env()")
+		envExpressionPool.Put(expr)
 		return nil
 	}
 	expr.Name = p.parseStringLiteral().(*StringLiteral)
@@ -435,11 +483,13 @@ func (p *Parser) parseEnvExpression() Expression {
 		p.nextToken()
 		if !p.curTokenIs(STRING) {
 			p.appendError("expected string for env() default value")
+			envExpressionPool.Put(expr)
 			return nil
 		}
 		expr.DefaultValue = p.parseStringLiteral().(*StringLiteral)
 	}
 	if !p.expectPeek(RPAREN) {
+		envExpressionPool.Put(expr)
 		return nil
 	}
 	return expr

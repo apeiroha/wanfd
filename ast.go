@@ -18,6 +18,7 @@ type Node interface {
 	TokenLiteral() string
 	String() string
 	Format(w *bytes.Buffer, indent string, opts FormatOptions)
+	Release()
 }
 
 // Statement 代表一个语句.
@@ -43,6 +44,15 @@ func (c *Comment) expressionNode()      {}
 func (c *Comment) statementNode()       {}
 func (c *Comment) TokenLiteral() string { return string(c.Token.Literal) }
 func (c *Comment) String() string       { return string(c.Text) }
+
+func (c *Comment) Reset() {
+	c.Token = Token{}
+	c.Text = nil
+}
+
+func (c *Comment) Release() {
+	commentPool.Put(c)
+}
 func (c *Comment) Format(w *bytes.Buffer, indent string, opts FormatOptions) {
 	w.Write(c.Text)
 }
@@ -50,6 +60,19 @@ func (c *Comment) Format(w *bytes.Buffer, indent string, opts FormatOptions) {
 // RootNode 是每个WANF文件AST的根节点.
 type RootNode struct {
 	Statements []Statement
+}
+
+func (p *RootNode) Reset() {
+	p.Statements = nil
+}
+
+func (p *RootNode) Release() {
+	stmts := p.Statements
+	p.Statements = nil
+	for _, stmt := range stmts {
+		stmt.Release()
+	}
+	rootNodePool.Put(p)
 }
 
 func (p *RootNode) TokenLiteral() string {
@@ -136,6 +159,32 @@ type AssignStatement struct {
 	LineComment     *Comment   // 行尾注释
 }
 
+func (as *AssignStatement) Reset() {
+	as.Token = Token{}
+	as.Name = nil
+	as.Value = nil
+	as.LeadingComments = nil
+	as.LineComment = nil
+}
+
+func (as *AssignStatement) Release() {
+	name, value, leading, line := as.Name, as.Value, as.LeadingComments, as.LineComment
+	as.Name, as.Value, as.LeadingComments, as.LineComment = nil, nil, nil, nil
+	if name != nil {
+		name.Release()
+	}
+	if value != nil {
+		value.Release()
+	}
+	for _, c := range leading {
+		c.Release()
+	}
+	if line != nil {
+		line.Release()
+	}
+	assignStatementPool.Put(as)
+}
+
 func (as *AssignStatement) statementNode() {}
 func (as *AssignStatement) GetLeadingComments() []*Comment {
 	return as.LeadingComments
@@ -173,6 +222,32 @@ type BlockStatement struct {
 	Label           *StringLiteral
 	Body            *RootNode
 	LeadingComments []*Comment // 前置注释
+}
+
+func (bs *BlockStatement) Reset() {
+	bs.Token = Token{}
+	bs.Name = nil
+	bs.Label = nil
+	bs.Body = nil
+	bs.LeadingComments = nil
+}
+
+func (bs *BlockStatement) Release() {
+	name, label, body, leading := bs.Name, bs.Label, bs.Body, bs.LeadingComments
+	bs.Name, bs.Label, bs.Body, bs.LeadingComments = nil, nil, nil, nil
+	if name != nil {
+		name.Release()
+	}
+	if label != nil {
+		label.Release()
+	}
+	if body != nil {
+		body.Release()
+	}
+	for _, c := range leading {
+		c.Release()
+	}
+	blockStatementPool.Put(bs)
 }
 
 func (bs *BlockStatement) statementNode() {}
@@ -222,6 +297,32 @@ type VarStatement struct {
 	LineComment     *Comment   // 行尾注释
 }
 
+func (vs *VarStatement) Reset() {
+	vs.Token = Token{}
+	vs.Name = nil
+	vs.Value = nil
+	vs.LeadingComments = nil
+	vs.LineComment = nil
+}
+
+func (vs *VarStatement) Release() {
+	name, value, leading, line := vs.Name, vs.Value, vs.LeadingComments, vs.LineComment
+	vs.Name, vs.Value, vs.LeadingComments, vs.LineComment = nil, nil, nil, nil
+	if name != nil {
+		name.Release()
+	}
+	if value != nil {
+		value.Release()
+	}
+	for _, c := range leading {
+		c.Release()
+	}
+	if line != nil {
+		line.Release()
+	}
+	varStatementPool.Put(vs)
+}
+
 func (vs *VarStatement) statementNode() {}
 func (vs *VarStatement) GetLeadingComments() []*Comment {
 	return vs.LeadingComments
@@ -259,6 +360,28 @@ type ImportStatement struct {
 	Path            *StringLiteral
 	LeadingComments []*Comment // 前置注释
 	LineComment     *Comment   // 行尾注释
+}
+
+func (is *ImportStatement) Reset() {
+	is.Token = Token{}
+	is.Path = nil
+	is.LeadingComments = nil
+	is.LineComment = nil
+}
+
+func (is *ImportStatement) Release() {
+	path, leading, line := is.Path, is.LeadingComments, is.LineComment
+	is.Path, is.LeadingComments, is.LineComment = nil, nil, nil
+	if path != nil {
+		path.Release()
+	}
+	for _, c := range leading {
+		c.Release()
+	}
+	if line != nil {
+		line.Release()
+	}
+	importStatementPool.Put(is)
 }
 
 func (is *ImportStatement) statementNode() {}
@@ -299,6 +422,15 @@ type Identifier struct {
 func (i *Identifier) expressionNode()      {}
 func (i *Identifier) TokenLiteral() string { return string(i.Token.Literal) }
 func (i *Identifier) String() string       { return string(i.Value) }
+
+func (i *Identifier) Reset() {
+	i.Token = Token{}
+	i.Value = nil
+}
+
+func (i *Identifier) Release() {
+	identifierPool.Put(i)
+}
 func (i *Identifier) Format(w *bytes.Buffer, indent string, opts FormatOptions) {
 	w.Write(i.Value)
 }
@@ -324,6 +456,15 @@ func (sl *StringLiteral) String() string {
 	}
 	return `"` + string(sl.Value) + `"`
 }
+
+func (sl *StringLiteral) Reset() {
+	sl.Token = Token{}
+	sl.Value = nil
+}
+
+func (sl *StringLiteral) Release() {
+	stringLiteralPool.Put(sl)
+}
 func (sl *StringLiteral) Format(w *bytes.Buffer, indent string, opts FormatOptions) {
 	if opts.Style != StyleSingleLine && bytes.Contains(sl.Value, []byte("\n")) {
 		w.WriteString("`")
@@ -346,6 +487,15 @@ func (il *IntegerLiteral) expressionNode()      {}
 func (il *IntegerLiteral) literalNode()         {}
 func (il *IntegerLiteral) TokenLiteral() string { return string(il.Token.Literal) }
 func (il *IntegerLiteral) String() string       { return string(il.Token.Literal) }
+
+func (il *IntegerLiteral) Reset() {
+	il.Token = Token{}
+	il.Value = 0
+}
+
+func (il *IntegerLiteral) Release() {
+	integerLiteralPool.Put(il)
+}
 func (il *IntegerLiteral) Format(w *bytes.Buffer, indent string, opts FormatOptions) {
 	w.Write(il.Token.Literal)
 }
@@ -360,6 +510,15 @@ func (fl *FloatLiteral) expressionNode()      {}
 func (fl *FloatLiteral) literalNode()         {}
 func (fl *FloatLiteral) TokenLiteral() string { return string(fl.Token.Literal) }
 func (fl *FloatLiteral) String() string       { return string(fl.Token.Literal) }
+
+func (fl *FloatLiteral) Reset() {
+	fl.Token = Token{}
+	fl.Value = 0
+}
+
+func (fl *FloatLiteral) Release() {
+	floatLiteralPool.Put(fl)
+}
 func (fl *FloatLiteral) Format(w *bytes.Buffer, indent string, opts FormatOptions) {
 	w.Write(fl.Token.Literal)
 }
@@ -374,6 +533,15 @@ func (bl *BoolLiteral) expressionNode()      {}
 func (bl *BoolLiteral) literalNode()         {}
 func (bl *BoolLiteral) TokenLiteral() string { return string(bl.Token.Literal) }
 func (bl *BoolLiteral) String() string       { return string(bl.Token.Literal) }
+
+func (bl *BoolLiteral) Reset() {
+	bl.Token = Token{}
+	bl.Value = false
+}
+
+func (bl *BoolLiteral) Release() {
+	boolLiteralPool.Put(bl)
+}
 func (bl *BoolLiteral) Format(w *bytes.Buffer, indent string, opts FormatOptions) {
 	w.Write(bl.Token.Literal)
 }
@@ -388,6 +556,15 @@ func (dl *DurationLiteral) expressionNode()      {}
 func (dl *DurationLiteral) literalNode()         {}
 func (dl *DurationLiteral) TokenLiteral() string { return string(dl.Token.Literal) }
 func (dl *DurationLiteral) String() string       { return string(dl.Token.Literal) }
+
+func (dl *DurationLiteral) Reset() {
+	dl.Token = Token{}
+	dl.Value = nil
+}
+
+func (dl *DurationLiteral) Release() {
+	durationLiteralPool.Put(dl)
+}
 func (dl *DurationLiteral) Format(w *bytes.Buffer, indent string, opts FormatOptions) {
 	w.Write(dl.Token.Literal)
 }
@@ -406,6 +583,20 @@ func (ll *ListLiteral) String() string {
 	buf.Reset()
 	ll.Format(buf, "", FormatOptions{Style: StyleBlockSorted, EmptyLines: true})
 	return buf.String()
+}
+
+func (ll *ListLiteral) Reset() {
+	ll.Token = Token{}
+	ll.Elements = nil
+}
+
+func (ll *ListLiteral) Release() {
+	elements := ll.Elements
+	ll.Elements = nil
+	for _, el := range elements {
+		el.Release()
+	}
+	listLiteralPool.Put(ll)
 }
 func (ll *ListLiteral) Format(w *bytes.Buffer, indent string, opts FormatOptions) {
 	if opts.Style == StyleSingleLine {
@@ -445,6 +636,20 @@ func (bl *BlockLiteral) String() string {
 	bl.Format(buf, "", FormatOptions{Style: StyleBlockSorted, EmptyLines: true})
 	return buf.String()
 }
+
+func (bl *BlockLiteral) Reset() {
+	bl.Token = Token{}
+	bl.Body = nil
+}
+
+func (bl *BlockLiteral) Release() {
+	body := bl.Body
+	bl.Body = nil
+	if body != nil {
+		body.Release()
+	}
+	blockLiteralPool.Put(bl)
+}
 func (bl *BlockLiteral) Format(w *bytes.Buffer, indent string, opts FormatOptions) {
 	if opts.Style == StyleSingleLine {
 		w.WriteString("{")
@@ -471,6 +676,15 @@ type VarExpression struct {
 func (ve *VarExpression) expressionNode()      {}
 func (ve *VarExpression) TokenLiteral() string { return string(ve.Token.Literal) }
 func (ve *VarExpression) String() string       { return "${" + string(ve.Name) + "}" }
+
+func (ve *VarExpression) Reset() {
+	ve.Token = Token{}
+	ve.Name = nil
+}
+
+func (ve *VarExpression) Release() {
+	varExpressionPool.Put(ve)
+}
 func (ve *VarExpression) Format(w *bytes.Buffer, indent string, opts FormatOptions) {
 	w.WriteString("${")
 	w.Write(ve.Name)
@@ -492,6 +706,24 @@ func (ee *EnvExpression) String() string {
 	buf.Reset()
 	ee.Format(buf, "", FormatOptions{Style: StyleBlockSorted, EmptyLines: true})
 	return buf.String()
+}
+
+func (ee *EnvExpression) Reset() {
+	ee.Token = Token{}
+	ee.Name = nil
+	ee.DefaultValue = nil
+}
+
+func (ee *EnvExpression) Release() {
+	name, defaultValue := ee.Name, ee.DefaultValue
+	ee.Name, ee.DefaultValue = nil, nil
+	if name != nil {
+		name.Release()
+	}
+	if defaultValue != nil {
+		defaultValue.Release()
+	}
+	envExpressionPool.Put(ee)
 }
 func (ee *EnvExpression) Format(w *bytes.Buffer, indent string, opts FormatOptions) {
 	w.WriteString("env(")
@@ -517,6 +749,20 @@ func (ml *MapLiteral) String() string {
 	buf.Reset()
 	ml.Format(buf, "", FormatOptions{Style: StyleBlockSorted, EmptyLines: true})
 	return buf.String()
+}
+
+func (ml *MapLiteral) Reset() {
+	ml.Token = Token{}
+	ml.Elements = nil
+}
+
+func (ml *MapLiteral) Release() {
+	elements := ml.Elements
+	ml.Elements = nil
+	for _, el := range elements {
+		el.Release()
+	}
+	mapLiteralPool.Put(ml)
 }
 func (ml *MapLiteral) Format(w *bytes.Buffer, indent string, opts FormatOptions) {
 	// Sort elements by key for deterministic output.

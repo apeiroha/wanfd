@@ -43,6 +43,7 @@ func NewDecoder(r io.Reader, opts ...DecoderOption) (*Decoder, error) {
 	l := NewLexer(data)
 	p := NewParser(l)
 	program := p.ParseProgram()
+	// program is released by the consumer (e.g. Decode)
 	if len(p.Errors()) > 0 {
 		var errs []string
 		for _, err := range p.Errors() {
@@ -148,6 +149,7 @@ func getOrCacheDecoderFields(typ reflect.Type) map[string]decoderCachedField {
 }
 
 func (dec *Decoder) Decode(v interface{}) error {
+	defer dec.program.Release()
 	rv := reflect.ValueOf(v)
 	if rv.Kind() != reflect.Ptr || rv.Elem().Kind() != reflect.Struct {
 		return fmt.Errorf("v must be a pointer to a struct")

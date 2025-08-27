@@ -139,6 +139,14 @@ func (a *astAnalyzer) collect(root Node) {
 	}
 }
 
+// ReleaseProgram manually releases an AST program back to the object pool.
+// This is useful for programs returned by Lint(), as they are not automatically released.
+func ReleaseProgram(program *RootNode) {
+	if program != nil {
+		program.Release()
+	}
+}
+
 func (a *astAnalyzer) check(node Node) Node {
 	if node == nil {
 		return nil
@@ -160,10 +168,10 @@ func (a *astAnalyzer) check(node Node) Node {
 				Column:    n.Token.Column,
 				EndLine:   n.Token.Line,
 				EndColumn: n.Token.Column + len(n.Name.Value),
-				Message:   fmt.Sprintf("block %q is defined only once, the label %q is redundant", string(n.Name.Value), string(n.Label.Value)),
+				Message:   fmt.Sprintf("block %q is defined only once, the label %q is redundant", BytesToString(n.Name.Value), BytesToString(n.Label.Value)),
 				Level:     ErrorLevelFmt,
 				Type:      ErrRedundantLabel,
-				Args:      []string{string(n.Name.Value), string(n.Label.Value)},
+				Args:      []string{BytesToString(n.Name.Value), BytesToString(n.Label.Value)},
 			}
 			a.errors = append(a.errors, err)
 			return &BlockStatement{
